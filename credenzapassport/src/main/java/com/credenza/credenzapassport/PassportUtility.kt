@@ -178,6 +178,39 @@ class PassportUtility(
             }
     }
 
+    /**
+    Checks the balance of NFT (Non-Fungible Token) of a user for a given contract address.
+    - Parameters:
+    - contractAddress: An Ethereum contract address for which to check NFT balance.
+    - userAddress: An Ethereum public address of the user whose NFT balance to check.
+    - Returns: The balance of NFT.
+     */
+    suspend fun nftCheck(
+        context: Context,
+        contractAddress: String,
+        userAddress: String
+    ): BigInteger? {
+        TODO("Not yet implemented")
+    }
+
+    /**
+    This asynchronous function checks the version of a contract for the given contract address and type.
+    It gets the contract ABI (Application Binary Interface) using the 'getContractABI' function,
+    constructs a contract instance, calls the 'getVersion' function to get the contract version,
+    and then returns the version string or "NONE" if there was an error.
+    - Parameters:
+    - contractAddress: The contract address for which to check the version.
+    - contractType: The type of the contract for which to check the version.
+    - Returns: A string containing the contract version or "NONE" if there was an error.
+     */
+    suspend fun checkVersion(
+        context: Context,
+        contractAddress: String,
+        contractType: String
+    ): String {
+        TODO("Not yet implemented")
+    }
+
     private suspend fun getAccountToken(context: Context): String? =
         context.dataStore.data.firstOrNull()?.get(PREFERENCE_KEY_TOKEN)
 }
