@@ -1,4 +1,4 @@
-package com.credenza.credenzapassport;
+package com.credenza.credenzapassport.contracts;
 
 import io.reactivex.Flowable;
 import io.reactivex.functions.Function;
