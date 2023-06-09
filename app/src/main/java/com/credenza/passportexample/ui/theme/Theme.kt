@@ -1,4 +1,4 @@
-package com.nsirobaba.credenzapassportexample.ui.theme
+package com.credenza.passportexample.ui.theme
 
 import android.app.Activity
 import android.os.Build

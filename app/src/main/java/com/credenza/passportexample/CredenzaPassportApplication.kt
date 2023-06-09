@@ -1,4 +1,4 @@
-package com.nsirobaba.credenzapassportexample
+package com.credenza.passportexample
 
 import android.app.Application
 import link.magic.android.Magic

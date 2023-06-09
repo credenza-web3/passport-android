@@ -1,4 +1,4 @@
-package com.nsirobaba.credenzapassportexample
+package com.credenza.passportexample
 
 import org.junit.Test
 

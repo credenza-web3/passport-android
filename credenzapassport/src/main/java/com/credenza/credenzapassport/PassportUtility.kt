@@ -4,8 +4,6 @@ import android.content.Context
 import android.util.Log
 import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
-import androidx.datastore.preferences.core.edit
-import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import com.credenza.credenzapassport.contracts.ConnectedPackagingContract
 import com.credenza.credenzapassport.contracts.ERC20TestContract
@@ -13,23 +11,23 @@ import com.credenza.credenzapassport.contracts.LoyaltyContract
 import com.credenza.credenzapassport.contracts.MetadataMembershipContract
 import com.credenza.credenzapassport.contracts.NFTOwnership
 import com.credenza.credenzapassport.contracts.OzzieContract
-import kotlinx.coroutines.flow.firstOrNull
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.runBlocking
 import link.magic.android.Magic
 import link.magic.android.modules.auth.requestConfiguration.LoginWithMagicLinkConfiguration
 import link.magic.android.modules.auth.response.DIDToken
-import link.magic.android.modules.web3j.contract.MagicTxnManager
 import okhttp3.OkHttpClient
+import okhttp3.Request
 import org.web3j.protocol.Web3j
 import org.web3j.protocol.core.methods.response.EthAccounts
-import org.web3j.tx.Contract
-import org.web3j.tx.gas.DefaultGasProvider
+import java.io.IOException
 import java.math.BigInteger
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
 import kotlin.coroutines.suspendCoroutine
 
 private val Context.dataStore: DataStore<Preferences> by preferencesDataStore(name = "passport")
+private const val TAG = "PassportUtility"
 
 interface PassportListener {
     fun onLoginComplete(address: String)
@@ -41,22 +39,6 @@ class PassportUtility(
     val magic: Magic,
     private val passportListener: PassportListener
 ) {
-
-    companion object {
-        private const val TAG = "PassportUtility"
-
-        private val PREFERENCE_KEY_TOKEN = stringPreferencesKey("token")
-        private val PREFERENCE_KEY_ACCOUNT = stringPreferencesKey("account")
-
-        private val CONTRACT_CLASSES = mapOf(
-            "OzzieContract" to OzzieContract::class.java,
-            "MetadataMembershipContract" to MetadataMembershipContract::class.java,
-            "LoyaltyContract" to LoyaltyContract::class.java,
-            "ERC20TestContract" to ERC20TestContract::class.java,
-            "ConnectedPackagingContract" to ConnectedPackagingContract::class.java,
-            "NFTOwnership" to NFTOwnership::class.java,
-        )
-    }
 
     // The authentication token to be used for API calls.
     private var authenticationTokenC = ""
@@ -72,6 +54,8 @@ class PassportUtility(
 
     private val web3j = Web3j.build(magic.rpcProvider)
     private val okHttpClient = OkHttpClient()
+    private val passportDataStore: PassportDataStore = PassportDataStore(context.dataStore)
+    private val contractUtils: ContractUtils = ContractUtils(okHttpClient, web3j, passportDataStore)
 
     private val dataStore: DataStore<Preferences> = context.dataStore
 
@@ -104,6 +88,21 @@ class PassportUtility(
         checkVersion("0x61ff3d77ab2befece7b1c8e0764ac973ad85a9ef", "LoyaltyContract")
 
     /**
+     * Performs a GET request using the provided authentication token.
+     */
+    fun authN() {
+        runBlocking(Dispatchers.IO) {
+            val request = Request.Builder()
+                .url("https://deep-index.moralis.io/api/v2/0x56bafed9ba9f918594505d93f283b26700ae1d9f/logs?chain=mumbai") // TODO use some enum for prod/test chain?
+                .header("x-api-key", authenticationTokenC)
+                .build()
+            okHttpClient.newCall(request).execute().use { response ->
+                val responseStr = response.body?.string()
+            }
+        }
+    }
+
+    /**
      * Handles sign-in for a given email address using Magic.link SDK.
      * Note: Stores the login token in DataStore after successful authentication.
      *
@@ -128,7 +127,7 @@ class PassportUtility(
                         return@whenComplete
                     }
 
-                    saveDataStoreString(PREFERENCE_KEY_TOKEN, token.result)
+                    passportDataStore.saveToken(token.result)
                     getAccount()
                 }
             }
@@ -155,7 +154,7 @@ class PassportUtility(
 
                     accResponse.result?.firstOrNull()?.let { account ->
 
-                        saveDataStoreString(PREFERENCE_KEY_ACCOUNT, account)
+                        passportDataStore.saveAccount(account)
                         passportListener.onLoginComplete(account)
 
                     } ?: run {
@@ -178,7 +177,7 @@ class PassportUtility(
     ): BigInteger? =
         suspendCoroutine { continuation ->
 
-            val contract = getContract(OzzieContract::class.java, contractAddress)
+            val contract = contractUtils.getContract(OzzieContract::class.java, contractAddress)
 
             contract.balanceOfBatch(listOf(userAddress), listOf(BigInteger("2")))
                 .sendAsync()
@@ -209,7 +208,7 @@ class PassportUtility(
     ): BigInteger? =
         suspendCoroutine { continuation ->
 
-            val contract = getContract(NFTOwnership::class.java, nftContractAddressC)
+            val contract = contractUtils.getContract(NFTOwnership::class.java, nftContractAddressC)
 
             contract.balanceOfBatch(listOf(address), listOf(BigInteger("2")))
                 .sendAsync()
@@ -230,7 +229,7 @@ class PassportUtility(
 
     /**
      * This asynchronous function checks the version of a contract for the given contract address and type.
-     * It gets the contract ABI (Application Binary Interface) using the 'getContractABI' function,
+     * It gets the contract ABI (Application Binary Interface) using the 'contractUtils.getContractABI' function,
      * constructs a contract instance, calls the 'getVersion' function to get the contract version,
      * and then returns the version string or "NONE" if there was an error.
      *
@@ -244,7 +243,7 @@ class PassportUtility(
     ): String =
         suspendCoroutine { continuation ->
 
-            val contract = getContract(contractType, contractAddress)
+            val contract = contractUtils.getContract(contractType, contractAddress)
 
             val versionRequest = when (contract) {
                 is OzzieContract -> contract.version
@@ -272,92 +271,214 @@ class PassportUtility(
         }
 
     /**
-     * Returns a smart contract object.
+     * This asynchronous function adds a membership to the given contract address for the given user Ethereum address and metadata.
+     * It gets the contract ABI (Application Binary Interface) using the 'contractUtils.getContractABI' function,
+     * constructs a contract instance, and then creates a transaction to call the 'addMembership' function
+     * with the given user address and metadata. It signs the transaction with the private key and then sends
+     * the transaction to the network to be mined.
      *
-     * @param contractClassName: The name of the smart contract class.
-     * @param contractAddress: The address of the contract.
-     * @return The object of the smart contract class
+     * @param contractAddress: The contract address to which to add the membership.
+     * @param userAddress: The Ethereum address of the user to add as a member.
+     * @param metadata: The metadata to associate with the membership.
      */
-    private fun getContract(
-        contractClassName: String,
-        contractAddress: String
-    ): Contract = runBlocking {
-        val contractClass = CONTRACT_CLASSES[contractClassName]?.asSubclass(Contract::class.java)
-            ?: throw IllegalArgumentException("Contract of type $contractClassName is not supported")
+    suspend fun addMembership(
+        contractAddress: String,
+        userAddress: String,
+        metadata: String
+    ) = suspendCoroutine { continuation ->
 
-        return@runBlocking getContract(
-            contractClass,
-            contractAddress
-        )
+        val contract =
+            contractUtils.getContract(MetadataMembershipContract::class.java, contractAddress)
+
+        contract.addMembership(userAddress, metadata)
+            .sendAsync()
+            .whenComplete { _, throwable ->
+                throwable?.let {
+                    Log.e(
+                        TAG,
+                        "Failed to addMembership for contract $contractAddress",
+                        throwable
+                    )
+                    continuation.resumeWithException(it)
+                    return@whenComplete
+                }
+
+                continuation.resume(Unit)
+            }
     }
 
-    private fun <T : Contract> getContract(
-        contractClass: Class<T>,
-        contractAddress: String
-    ): T = runBlocking {
-        val gasProvider = DefaultGasProvider()
-        val accountAddress = getDataStoreString(PREFERENCE_KEY_ACCOUNT)
-            ?: throw IllegalStateException("Current user is not signed in")
+    /**
+     * Removes membership of a user from a contract on the Ethereum blockchain.
+     *
+     * @param contractAddress: The Ethereum address of the contract.
+     * @param userAddress: The Ethereum address of the user whose membership needs to be removed.
+     */
+    suspend fun removeMembership(
+        contractAddress: String,
+        userAddress: String
+    ) = suspendCoroutine { continuation ->
 
-        return@runBlocking when (contractClass) {
-            OzzieContract::class.java -> OzzieContract.load(
-                contractAddress,
-                web3j,
-                MagicTxnManager(web3j, accountAddress),
-                gasProvider
-            ) as T
+        val contract =
+            contractUtils.getContract(MetadataMembershipContract::class.java, contractAddress)
 
-            MetadataMembershipContract::class.java -> MetadataMembershipContract.load(
-                contractAddress,
-                web3j,
-                MagicTxnManager(web3j, accountAddress),
-                gasProvider
-            ) as T
+        contract.removeMembership(userAddress)
+            .sendAsync()
+            .whenComplete { _, throwable ->
+                throwable?.let {
+                    Log.e(
+                        TAG,
+                        "Failed to removeMembership for contract $contractAddress",
+                        throwable
+                    )
+                    continuation.resumeWithException(it)
+                    return@whenComplete
+                }
 
-            LoyaltyContract::class.java -> LoyaltyContract.load(
-                contractAddress,
-                web3j,
-                MagicTxnManager(web3j, accountAddress),
-                gasProvider
-            ) as T
-
-            ERC20TestContract::class.java -> ERC20TestContract.load(
-                contractAddress,
-                web3j,
-                MagicTxnManager(web3j, accountAddress),
-                gasProvider
-            ) as T
-
-            ConnectedPackagingContract::class.java -> ConnectedPackagingContract.load(
-                contractAddress,
-                web3j,
-                MagicTxnManager(web3j, accountAddress),
-                gasProvider
-            ) as T
-
-            NFTOwnership::class.java -> NFTOwnership.load(
-                contractAddress,
-                web3j,
-                MagicTxnManager(web3j, accountAddress),
-                gasProvider
-            ) as T
-
-            else -> throw IllegalArgumentException("Contract of type ${contractClass.name} is not supported")
-        }
+                continuation.resume(Unit)
+            }
     }
 
-    private fun saveDataStoreString(
-        key: Preferences.Key<String>,
-        value: String
-    ) = runBlocking {
-        dataStore.edit {
-            it[key] = value
-        }
+    /**
+     * Checks if a user is a confirmed member of a contract on the Ethereum blockchain.
+     *
+     * @param contractAddress: The Ethereum address of the contract.
+     * @param ownerAddress: The Ethereum address of the owner of the contract.
+     * @param userAddress: The Ethereum address of the user to be checked.
+     * @return A boolean value indicating whether the user is a confirmed member of the contract.
+     */
+    suspend fun checkMembership(
+        contractAddress: String,
+        ownerAddress: String,
+        userAddress: String
+    ): Boolean = suspendCoroutine { continuation ->
+
+        val contract =
+            contractUtils.getContract(MetadataMembershipContract::class.java, contractAddress)
+
+        contract.confirmMembership(ownerAddress, userAddress)
+            .sendAsync()
+            .whenComplete { result, throwable ->
+                throwable?.let {
+                    Log.e(
+                        TAG,
+                        "Failed to checkMembership for contract $contractAddress",
+                        throwable
+                    )
+                    continuation.resumeWithException(it)
+                    return@whenComplete
+                }
+
+                continuation.resume(result)
+            }
     }
 
-    private fun getDataStoreString(
-        key: Preferences.Key<String>
-    ): String? = runBlocking {
-        dataStore.data.firstOrNull()?.get(key)
+    /**
+     * Calculates the loyalty points of a given user for the specified loyalty contract.
+     *
+     * @param contractAddress: The Ethereum address of the loyalty contract.
+     * @param userAddress: The Ethereum address of the user to check loyalty points for.
+     * @return A `BigInteger` representing the user's loyalty points.
+     */
+    suspend fun loyaltyCheck(
+        contractAddress: String,
+        userAddress: String
+    ): BigInteger = suspendCoroutine { continuation ->
+
+        val contract =
+            contractUtils.getContract(LoyaltyContract::class.java, contractAddress)
+
+        contract.checkPoints(userAddress)
+            .sendAsync()
+            .whenComplete { points, throwable ->
+                throwable?.let {
+                    Log.e(
+                        TAG,
+                        "Failed to loyaltyCheck for contract $contractAddress",
+                        throwable
+                    )
+                    continuation.resumeWithException(it)
+                    return@whenComplete
+                }
+
+                continuation.resume(points)
+            }
     }
+
+    /**
+     * Adds loyalty points to the user's account.
+     *
+     * @param contractAddress: The address of the loyalty contract.
+     * @param userAddress: The address of the user's account to add points to.
+     * @param points: The number of points to add to the user's account.
+     */
+    suspend fun loyaltyAdd(
+        contractAddress: String,
+        userAddress: String,
+        points: BigInteger,
+        eventId: BigInteger
+    ) = suspendCoroutine { continuation ->
+
+        val contract =
+            contractUtils.getContract(LoyaltyContract::class.java, contractAddress)
+
+        contract.addPoints(userAddress, points, eventId)
+            .sendAsync()
+            .whenComplete { _, throwable ->
+                throwable?.let {
+                    Log.e(
+                        TAG,
+                        "Failed to loyaltyAdd for contract $contractAddress",
+                        throwable
+                    )
+                    continuation.resumeWithException(it)
+                    return@whenComplete
+                }
+
+                continuation.resume(Unit)
+            }
+    }
+
+    /**
+     * Checks the balance of a user's account for a given ERC20 token contract.
+     *
+     * @param contractAddress: The address of the ERC20 token contract.
+     * @param userAddress: The address of the user's account to check the balance of.
+     * @return The balance of the user's account.
+     */
+    suspend fun svCheck(
+        contractAddress: String,
+        userAddress: String
+    ): BigInteger = suspendCoroutine { continuation ->
+
+        val contract =
+            contractUtils.getContract(ERC20TestContract::class.java, contractAddress)
+
+        contract.balanceOf(userAddress)
+            .sendAsync()
+            .whenComplete { value, throwable ->
+                throwable?.let {
+                    Log.e(
+                        TAG,
+                        "Failed to svCheck for contract $contractAddress",
+                        throwable
+                    )
+                    continuation.resumeWithException(it)
+                    return@whenComplete
+                }
+
+                continuation.resume(value)
+            }
+    }
+
+    /**
+     * Returns the ABI (Application Binary Interface) of a smart contract.
+     *
+     * @param contractName: The name of the smart contract.
+     * @return The ABI data of the smart contract.
+     * @throws IOException
+     */
+    @Throws(IOException::class)
+    suspend fun getContractABI(
+        contractName: String
+    ): String = contractUtils.getContractABI(contractName)
 }

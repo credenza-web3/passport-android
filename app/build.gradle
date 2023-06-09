@@ -4,11 +4,11 @@ plugins {
 }
 
 android {
-    namespace 'com.nsirobaba.credenzapassportexample'
+    namespace 'com.credenza.passportexample'
     compileSdk 33
 
     defaultConfig {
-        applicationId "com.nsirobaba.credenzapassportexample"
+        applicationId "com.credenza.passportexample"
         minSdk 24
         targetSdk 33
         versionCode 1

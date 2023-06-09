@@ -1,4 +1,4 @@
-package com.nsirobaba.credenzapassportexample
+package com.credenza.passportexample
 
 import android.content.Context
 import android.os.Bundle
@@ -28,7 +28,7 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import com.credenza.credenzapassport.PassportListener
 import com.credenza.credenzapassport.PassportUtility
-import com.nsirobaba.credenzapassportexample.ui.theme.CredenzaPassportExampleTheme
+import com.credenza.passportexample.ui.theme.CredenzaPassportExampleTheme
 import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {
@@ -36,6 +36,7 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         setContent {
             CredenzaPassportExampleTheme {
+                // A surface container using the 'background' color from the theme
                 Surface(
                     modifier = Modifier.fillMaxSize(),
                     color = MaterialTheme.colorScheme.background
@@ -151,11 +152,108 @@ fun MainContent(modifier: Modifier = Modifier) {
         }) {
             Text(text = "checkNFTOwnership")
         }
+
+        Button(onClick = {
+            coroutineScope.launch {
+                passportUtility.addMembership(
+                    "0x3366F71c99A4684282BfE8af800194abeEF5F4C3",
+                    "0x375fa2f7fec390872a04f9c147c943eb8e48c43d",
+                    "app metameta"
+                )
+                showShortToast(context, "Membership added")
+            }
+        }) {
+            Text(text = "addMembership")
+        }
+
+        Button(onClick = {
+            coroutineScope.launch {
+                passportUtility.removeMembership(
+                    "0x3366F71c99A4684282BfE8af800194abeEF5F4C3",
+                    "0x375fa2f7fec390872a04f9c147c943eb8e48c43d"
+                )
+                showShortToast(context, "Membership removed")
+            }
+        }) {
+            Text(text = "removeMembership")
+        }
+
+        Button(onClick = {
+            coroutineScope.launch {
+                val result = passportUtility.checkMembership(
+                    "0x3366F71c99A4684282BfE8af800194abeEF5F4C3",
+                    "0x612Bf0bD4c3519129D67e53F4dBa817e8Ce457ac",
+                    "0x375fa2f7fec390872a04f9c147c943eb8e48c43d"
+                )
+                showShortToast(context, "Has membership: $result")
+            }
+        }) {
+            Text(text = "checkMembership")
+        }
+
+        Button(onClick = {
+            coroutineScope.launch {
+                val result = passportUtility.loyaltyCheck(
+                    "0xb4A47c481e789dc09F09eC14810aae4Be3E67be9",
+                    "0x375fa2f7fec390872a04f9c147c943eb8e48c43d"
+                )
+                showShortToast(context, "Loyalty: $result")
+            }
+        }) {
+            Text(text = "loyaltyCheck")
+        }
+
+        Button(onClick = {
+            coroutineScope.launch {
+                passportUtility.loyaltyAdd(
+                    "0xb4A47c481e789dc09F09eC14810aae4Be3E67be9",
+                    "0x375fa2f7fec390872a04f9c147c943eb8e48c43d",
+                    10.toBigInteger(),
+                    456.toBigInteger()
+                )
+                showShortToast(context, "Loyalty added: 10")
+            }
+        }) {
+            Text(text = "loyaltyAdd")
+        }
+
+        Button(onClick = {
+            coroutineScope.launch {
+                val result = passportUtility.svCheck(
+                    "0x893fBedDaDfdfb836CC069902F7270eA56fD6ebF",
+                    "0x375fa2f7fec390872a04f9c147c943eb8e48c43d"
+                )
+                showShortToast(context, "SV: $result")
+            }
+        }) {
+            Text(text = "svCheck")
+        }
+
+        Button(onClick = {
+            coroutineScope.launch {
+                val result = passportUtility.getContractABI(
+                    "OzzieContract"
+                )
+                showShortToast(context, result)
+            }
+        }) {
+            Text(text = "getContractABI OzzieContract")
+        }
+
+        Button(onClick = {
+            coroutineScope.launch {
+                val result = passportUtility.authN()
+                showShortToast(context, "$result")
+            }
+        }) {
+            Text(text = "authN")
+        }
     }
 }
 
-private fun showShortToast(context: Context, message: String) =
+private fun showShortToast(context: Context, message: String) {
     Toast.makeText(context, message, Toast.LENGTH_SHORT).show()
+}
 
 @Preview(showBackground = true)
 @Composable
