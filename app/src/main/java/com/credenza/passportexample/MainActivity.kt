@@ -1,5 +1,6 @@
 package com.credenza.passportexample
 
+import android.app.Activity
 import android.content.Context
 import android.os.Bundle
 import android.widget.Toast
@@ -208,10 +209,10 @@ fun MainContent(modifier: Modifier = Modifier) {
                 passportUtility.loyaltyAdd(
                     "0xb4A47c481e789dc09F09eC14810aae4Be3E67be9",
                     "0x375fa2f7fec390872a04f9c147c943eb8e48c43d",
-                    10.toBigInteger(),
+                    123.toBigInteger(),
                     456.toBigInteger()
                 )
-                showShortToast(context, "Loyalty added: 10")
+                showShortToast(context, "Loyalty added")
             }
         }) {
             Text(text = "loyaltyAdd")
@@ -247,6 +248,12 @@ fun MainContent(modifier: Modifier = Modifier) {
             }
         }) {
             Text(text = "authN")
+        }
+
+        Button(onClick = {
+            passportUtility.readNFC(context as Activity)
+        }) {
+            Text(text = "readNFC")
         }
     }
 }

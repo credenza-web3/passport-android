@@ -1,6 +1,11 @@
 package com.credenza.credenzapassport
 
+import android.app.Activity
 import android.content.Context
+import android.nfc.NfcAdapter
+import android.nfc.NfcAdapter.FLAG_READER_NFC_A
+import android.nfc.Tag
+import android.os.Bundle
 import android.util.Log
 import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
@@ -57,7 +62,7 @@ class PassportUtility(
     private val passportDataStore: PassportDataStore = PassportDataStore(context.dataStore)
     private val contractUtils: ContractUtils = ContractUtils(okHttpClient, web3j, passportDataStore)
 
-    private val dataStore: DataStore<Preferences> = context.dataStore
+    private var nfcAdapter: NfcAdapter? = null
 
     /**
      * Initializes the credentials needed for API calls and smart contract interaction.
@@ -471,6 +476,96 @@ class PassportUtility(
     }
 
     /**
+     * Retrieves the connection information for a given serial number from the Connected Packaging smart contract.
+     *
+     * @param serialNumber: The serial number of the connected packaging.
+     * @return The Ethereum address of the connected packaging.
+     */
+    suspend fun connectedPackageQuery(
+        serialNumber: String
+    ): String = suspendCoroutine { continuation ->
+
+        val contract =
+            contractUtils.getContract(ConnectedPackagingContract::class.java, connectedContractAddressC)
+
+        contract.retrieveConnection(serialNumber)
+            .sendAsync()
+            .whenComplete { value, throwable ->
+                throwable?.let {
+                    Log.e(
+                        TAG,
+                        "Failed to connectedPackageQuery for contract $connectedContractAddressC",
+                        throwable
+                    )
+                    continuation.resumeWithException(it)
+                    return@whenComplete
+                }
+
+                continuation.resume(value)
+            }
+    }
+
+    /**
+     * Claims a connection for a given user address and serial number in the Connected Packaging smart contract.
+     *
+     * @param userAddress: The Ethereum address of the user.
+     * @param serialNumber: The serial number of the connected packaging.
+     */
+    suspend fun connectedPackagePublish(
+        userAddress: String,
+        serialNumber: String
+    ) = suspendCoroutine { continuation ->
+
+        val contract =
+            contractUtils.getContract(ConnectedPackagingContract::class.java, connectedContractAddressC)
+
+        contract.claimConnection(serialNumber, userAddress)
+            .sendAsync()
+            .whenComplete { _, throwable ->
+                throwable?.let {
+                    Log.e(
+                        TAG,
+                        "Failed to connectedPackagePublish for contract $connectedContractAddressC",
+                        throwable
+                    )
+                    continuation.resumeWithException(it)
+                    return@whenComplete
+                }
+
+                continuation.resume(Unit)
+            }
+    }
+
+    /**
+     * Revokes a connection for a given serial number in the Connected Packaging smart contract.
+     *
+     * @param serialNumber: The serial number of the connected packaging.
+     */
+    suspend fun connectedPackagePurge(
+        serialNumber: String
+    ) = suspendCoroutine { continuation ->
+
+        val contract =
+            contractUtils.getContract(ConnectedPackagingContract::class.java, connectedContractAddressC)
+
+        contract.revokeConnection(serialNumber)
+            .sendAsync()
+            .whenComplete { _, throwable ->
+                throwable?.let {
+                    Log.e(
+                        TAG,
+                        "Failed to connectedPackagePurge for contract $connectedContractAddressC",
+                        throwable
+                    )
+                    continuation.resumeWithException(it)
+                    return@whenComplete
+                }
+
+                continuation.resume(Unit)
+            }
+    }
+
+    /**
      * Returns the ABI (Application Binary Interface) of a smart contract.
      *
      * @param contractName: The name of the smart contract.
@@ -481,4 +576,26 @@ class PassportUtility(
     suspend fun getContractABI(
         contractName: String
     ): String = contractUtils.getContractABI(contractName)
+
+    /**
+     * Initiates a new NFC adapter session for reading from the passport-enabled tag.
+     */
+    fun readNFC(activity: Activity) {
+        val nfcAdapter = NfcAdapter.getDefaultAdapter(activity)
+            ?: throw UnsupportedOperationException("Nfc is not supported for current device")
+
+        nfcAdapter.enableReaderMode(
+            activity,
+            { onTagDiscovered(activity, it) },
+            FLAG_READER_NFC_A,
+            Bundle()
+        )
+    }
+
+    private fun onTagDiscovered(activity: Activity, tag: Tag) {
+        val serialID: String = "" // TODO get serial ir
+        passportListener.onNFCScanComplete(serialID)
+        nfcAdapter?.disableReaderMode(activity)
+    }
+
 }
