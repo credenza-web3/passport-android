@@ -2,9 +2,14 @@ package com.credenza.credenzapassport
 
 import android.app.Activity
 import android.content.Context
+import android.nfc.NdefMessage
 import android.nfc.NfcAdapter
 import android.nfc.NfcAdapter.FLAG_READER_NFC_A
 import android.nfc.Tag
+import android.nfc.tech.IsoDep
+import android.nfc.tech.MifareClassic
+import android.nfc.tech.Ndef
+import android.nfc.tech.NfcV
 import android.os.Bundle
 import android.util.Log
 import androidx.datastore.core.DataStore
@@ -593,9 +598,114 @@ class PassportUtility(
     }
 
     private fun onTagDiscovered(activity: Activity, tag: Tag) {
-        val serialID: String = "" // TODO get serial ir
+        val serialID: String = runBlocking(Dispatchers.IO) {
+            val tagInfos = getTagInfos(tag)
+            var tagInfosDetail = ""
+            tagInfos.forEach { item ->
+                tagInfosDetail += "${item.key}: ${item.value}\n"
+                if (item.key == "Identifier") {
+                    return@runBlocking ((item.value) as? String) ?: ""
+                }
+            }
+            return@runBlocking ""
+        }
         passportListener.onNFCScanComplete(serialID)
         nfcAdapter?.disableReaderMode(activity)
     }
 
+    private fun getTagInfos(tag: Tag): Map<String, String> {
+        val infos = mutableMapOf<String, String>()
+
+        infos["Identifier"] = byteArrayOf(*tag.id).toHex()
+
+        when {
+            // miFare
+            tag.techList.contains("android.nfc.tech.MifareClassic") -> {
+
+                val mifareClassicTag = MifareClassic.get(tag)
+                infos["TagType"] = when (mifareClassicTag.type) {
+                    MifareClassic.TYPE_CLASSIC -> "MiFare Classic"
+                    MifareClassic.TYPE_PRO -> "MiFare Pro"
+                    MifareClassic.TYPE_PLUS -> "MiFare Plus"
+                    MifareClassic.TYPE_UNKNOWN -> "MiFare unknown"
+                    else -> "MiFare unknown"
+                }
+            }
+
+            tag.techList.contains("android.nfc.tech.MifareUltralight") -> {
+                infos["TagType"] = "MiFare Ultralight"
+            }
+
+            // iso7816Compatible
+            tag.techList.contains("android.nfc.tech.IsoDep") -> {
+                val isoDep = IsoDep.get(tag)
+                infos["TagType"] = "ISO 14443-4"
+                infos["HistoricalBytes"] = isoDep.historicalBytes.toHex()
+            }
+
+            // ISO15693
+            tag.techList.contains("android.nfc.tech.NfcV") -> {
+
+                val nfcV = NfcV.get(tag)
+                infos["TagType"] = "ISO15693"
+                infos["Identifier"] = byteArrayOf(*tag.id).toHex()
+                infos["DSF ID"] = nfcV.dsfId.toString()
+            }
+
+            // includes feliCa
+            tag.techList.contains("android.nfc.tech.Ndef") -> {
+                val ndef = Ndef.get(tag)
+                infos["TagType"] = when (ndef.type) {
+                    Ndef.NFC_FORUM_TYPE_1 -> "NFC Forum Type 1" // such as the Innovision Topaz
+                    Ndef.NFC_FORUM_TYPE_2 -> "NFC Forum Type 2" // such as the the NXP MIFARE Ultralight
+                    Ndef.NFC_FORUM_TYPE_3 -> "NFC Forum Type 3" // such as Sony Felica
+                    Ndef.NFC_FORUM_TYPE_4 -> "NFC Forum Type 4" // such as NXP MIFARE Desfire
+                    Ndef.MIFARE_CLASSIC -> "MiFare Classic"
+                    else -> "NFC Forum Type unknown"
+                }
+            }
+        }
+
+        return infos
+    }
+
+    /**
+     * Returns a string containing information about the records in the given array of NdefMessage objects.
+     *
+     * @param messages: An array of NdefMessage objects.
+     * @return A string containing information about the records in the given array of NdefMessage objects.
+     */
+    fun contentsForMessages(messages: List<NdefMessage>): String {
+        return messages.map { message ->
+            message.records.mapIndexed { i, record ->
+                "Record(${i + 1}):\n" +
+                        "Type name format: ${record.toMimeType()}\n" +
+                        "Type: ${record.type}\n" +
+                        "Identifier: ${record.id}\n" +
+                        "Length: ${message.byteArrayLength}\n" +
+                        "Payload content:${record.payload.decodeToString()}\n" +
+                        "Payload raw data: ${record.payload}\n\n"
+            }.joinToString(separator = "") { it }
+        }.joinToString(separator = "") { it }
+    }
+
+    /**
+     * Sends command to tag and prints response
+     *
+     * @param tag tag
+     */
+    fun sendCommandToTag(tag: Tag) {
+        try {
+            val isoDep = IsoDep.get(tag)
+            isoDep.connect()
+
+            val response =
+                isoDep.transceive("00A4040C07F0010203040506".hexToByteArray())
+            Log.d(TAG, "Response from tag $response")
+
+            isoDep.close()
+        } catch (e: Throwable) {
+            Log.d("ABC1209", "error", e)
+        }
+    }
 }
