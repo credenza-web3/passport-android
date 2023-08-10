@@ -55,9 +55,9 @@ fun MainContent(modifier: Modifier = Modifier) {
     val context = LocalContext.current
 
     val passportUtility = PassportUtility(
-        context.applicationContext,
-        (context.applicationContext as CredenzaPassportApplication).magic,
-        object : PassportListener {
+        context = context.applicationContext,
+        magic = (context.applicationContext as CredenzaPassportApplication).magic,
+        passportListener = object : PassportListener {
 
             override fun onLoginComplete(address: String) {
                 showShortToast(context, "Login success for $address")
@@ -181,7 +181,7 @@ fun MainContent(modifier: Modifier = Modifier) {
 
         Button(onClick = {
             coroutineScope.launch {
-                val result = passportUtility.checkMembership(
+                val result = passportUtility.confirmMembership(
                     "0x3366F71c99A4684282BfE8af800194abeEF5F4C3",
                     "0x612Bf0bD4c3519129D67e53F4dBa817e8Ce457ac",
                     "0x375fa2f7fec390872a04f9c147c943eb8e48c43d"
@@ -189,7 +189,7 @@ fun MainContent(modifier: Modifier = Modifier) {
                 showShortToast(context, "Has membership: $result")
             }
         }) {
-            Text(text = "checkMembership")
+            Text(text = "confirmMembership")
         }
 
         Button(onClick = {

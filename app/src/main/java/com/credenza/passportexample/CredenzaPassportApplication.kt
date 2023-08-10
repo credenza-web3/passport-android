@@ -2,7 +2,7 @@ package com.credenza.passportexample
 
 import android.app.Application
 import link.magic.android.Magic
-import link.magic.android.core.relayer.urlBuilder.CustomNodeConfiguration
+import link.magic.android.core.relayer.urlBuilder.network.CustomNodeConfiguration
 
 private const val credenzaApiKey = "pk_live_A2A484A5087E5029"
 

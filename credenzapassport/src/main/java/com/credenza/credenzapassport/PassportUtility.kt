@@ -24,7 +24,7 @@ import com.credenza.credenzapassport.contracts.OzzieContract
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.runBlocking
 import link.magic.android.Magic
-import link.magic.android.modules.auth.requestConfiguration.LoginWithMagicLinkConfiguration
+import link.magic.android.modules.auth.requestConfiguration.LoginWithEmailOTPConfiguration
 import link.magic.android.modules.auth.response.DIDToken
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -121,9 +121,9 @@ class PassportUtility(
      */
     fun handleSignIn(context: Context, emailAddress: String) {
 
-        val configuration = LoginWithMagicLinkConfiguration(emailAddress)
+        val configuration = LoginWithEmailOTPConfiguration(emailAddress)
         magic.auth
-            .loginWithMagicLink(context, configuration)
+            .loginWithEmailOTP(context, configuration)
             .whenComplete { token: DIDToken?, error: Throwable? ->
 
                 error?.let {
@@ -147,7 +147,7 @@ class PassportUtility(
      * Gets the user's Ethereum public address using the Magic.link SDK and passes it to the `listener` instance.
      * Note: Calls `loginComplete(address:)` of the `listener` instance to pass the Ethereum public address to it.
      */
-    private fun getAccount() {
+    fun getAccount() {
         web3j.ethAccounts()
             .sendAsync()
             .whenComplete { accResponse: EthAccounts?, error: Throwable? ->
@@ -245,7 +245,11 @@ class PassportUtility(
      *
      * @param contractAddress: The contract address for which to check the version.
      * @param contractType: The type of the contract for which to check the version.
-     * @return A string containing the contract version or "NONE" if there was an error.
+     *
+     * @throws IllegalArgumentException if contract type is not supported
+     * @throws Throwable if it failed to get version for contract
+     *
+     * @return A string containing the contract version
      */
     suspend fun checkVersion(
         contractAddress: String,
@@ -356,7 +360,7 @@ class PassportUtility(
      * @param userAddress: The Ethereum address of the user to be checked.
      * @return A boolean value indicating whether the user is a confirmed member of the contract.
      */
-    suspend fun checkMembership(
+    suspend fun confirmMembership(
         contractAddress: String,
         ownerAddress: String,
         userAddress: String
@@ -420,6 +424,7 @@ class PassportUtility(
      * @param contractAddress: The address of the loyalty contract.
      * @param userAddress: The address of the user's account to add points to.
      * @param points: The number of points to add to the user's account.
+     * @param eventId: The id of event.
      */
     suspend fun loyaltyAdd(
         contractAddress: String,
@@ -613,7 +618,7 @@ class PassportUtility(
         nfcAdapter?.disableReaderMode(activity)
     }
 
-    private fun getTagInfos(tag: Tag): Map<String, String> {
+    fun getTagInfos(tag: Tag): Map<String, String> {
         val infos = mutableMapOf<String, String>()
 
         infos["Identifier"] = byteArrayOf(*tag.id).toHex()
