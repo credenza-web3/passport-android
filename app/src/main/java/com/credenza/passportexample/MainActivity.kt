@@ -3,15 +3,19 @@ package com.credenza.passportexample
 import android.app.Activity
 import android.content.Context
 import android.os.Bundle
+import android.util.Log
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -23,21 +27,27 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment.Companion.CenterVertically
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.lifecycleScope
 import com.credenza.credenzapassport.PassportListener
 import com.credenza.credenzapassport.PassportUtility
 import com.credenza.passportexample.ui.theme.CredenzaPassportExampleTheme
+import kotlinx.coroutines.CoroutineExceptionHandler
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
+
+private const val TAG = "MainActivity"
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContent {
             CredenzaPassportExampleTheme {
-                // A surface container using the 'background' color from the theme
                 Surface(
                     modifier = Modifier.fillMaxSize(),
                     color = MaterialTheme.colorScheme.background
@@ -75,8 +85,6 @@ fun MainContent(modifier: Modifier = Modifier) {
         connectedContractAddress = ""
     )
 
-    val coroutineScope = rememberCoroutineScope()
-
     Column(
         modifier = modifier
             .padding(16.dp)
@@ -98,157 +106,134 @@ fun MainContent(modifier: Modifier = Modifier) {
             Text(text = "Sign in")
         }
 
-        Button(onClick = {
-            coroutineScope.launch {
-                val result = passportUtility.getVersion()
-                showShortToast(context, "nftCheck: $result")
-            }
-        }) {
-            Text(text = "getVersion")
-        }
+        AsyncButton(
+            title = "getVersion",
+            doAction = { passportUtility.getVersion() }
+        )
 
-        Button(onClick = {
-            coroutineScope.launch {
-                val nftCheck = passportUtility.nftCheck(
+        AsyncButton(
+            title = "nftCheck",
+            doAction = {
+                passportUtility.nftCheck(
                     "0x4d20968f609bf10e06495529590623d5d858c5c7",
                     "0x2d3e53bea19d756624dbfa3a9cd9b616878cf698"
-                )
-                showShortToast(context, "nftCheck: $nftCheck")
+                )?.toString() ?: ""
             }
-        }) {
-            Text(text = "nftCheck")
-        }
+        )
 
-        Button(onClick = {
-            coroutineScope.launch {
-                val checkVersion = passportUtility.checkVersion(
+        AsyncButton(
+            title = "checkVersion OzzieContract",
+            doAction = {
+                passportUtility.checkVersion(
                     "0x4d20968f609bf10e06495529590623d5d858c5c7",
                     "OzzieContract"
                 )
-                showShortToast(context, "checkVersion: $checkVersion")
             }
-        }) {
-            Text(text = "checkVersion OzzieContract")
-        }
+        )
 
-        Button(onClick = {
-            coroutineScope.launch {
-                val result = passportUtility.checkVersion(
+        AsyncButton(
+            title = "checkVersion LedgerContract",
+            doAction = {
+                passportUtility.checkVersion(
                     "0x61ff3d77ab2befece7b1c8e0764ac973ad85a9ef",
-                    "LoyaltyContract"
+                    "LedgerContract"
                 )
-                showShortToast(context, result)
             }
-        }) {
-            Text(text = "checkVersion LoyaltyContract")
-        }
+        )
 
-        Button(onClick = {
-            coroutineScope.launch {
-                val result = passportUtility.checkNFTOwnership(
+        AsyncButton(
+            title = "checkNFTOwnership",
+            doAction = {
+                passportUtility.checkNFTOwnership(
                     "0xfb28530d9d065ec81e826fa61baa51748c1ee775"
-                )
-                showShortToast(context, "$result")
+                )?.toString() ?: ""
             }
-        }) {
-            Text(text = "checkNFTOwnership")
-        }
+        )
 
-        Button(onClick = {
-            coroutineScope.launch {
+        AsyncButton(
+            title = "addMembership",
+            doAction = {
                 passportUtility.addMembership(
-                    "0x3366F71c99A4684282BfE8af800194abeEF5F4C3",
+                    "0xDf3c92e0FD7eCc8199a453C7D72C685E5578b1fb",
                     "0x375fa2f7fec390872a04f9c147c943eb8e48c43d",
                     "app metameta"
                 )
-                showShortToast(context, "Membership added")
+                "Membership added"
             }
-        }) {
-            Text(text = "addMembership")
-        }
+        )
 
-        Button(onClick = {
-            coroutineScope.launch {
+        AsyncButton(
+            title = "removeMembership",
+            doAction = {
                 passportUtility.removeMembership(
-                    "0x3366F71c99A4684282BfE8af800194abeEF5F4C3",
+                    "0xDf3c92e0FD7eCc8199a453C7D72C685E5578b1fb",
                     "0x375fa2f7fec390872a04f9c147c943eb8e48c43d"
                 )
-                showShortToast(context, "Membership removed")
+                "Membership removed"
             }
-        }) {
-            Text(text = "removeMembership")
-        }
+        )
 
-        Button(onClick = {
-            coroutineScope.launch {
-                val result = passportUtility.confirmMembership(
-                    "0x3366F71c99A4684282BfE8af800194abeEF5F4C3",
+        AsyncButton(
+            title = "confirmMembership",
+            doAction = {
+                val hasMembership = passportUtility.confirmMembership(
+                    "0xDf3c92e0FD7eCc8199a453C7D72C685E5578b1fb",
                     "0x612Bf0bD4c3519129D67e53F4dBa817e8Ce457ac",
                     "0x375fa2f7fec390872a04f9c147c943eb8e48c43d"
                 )
-                showShortToast(context, "Has membership: $result")
+                if (hasMembership) "Has membership" else "No membership"
             }
-        }) {
-            Text(text = "confirmMembership")
-        }
+        )
 
-        Button(onClick = {
-            coroutineScope.launch {
-                val result = passportUtility.loyaltyCheck(
-                    "0xb4A47c481e789dc09F09eC14810aae4Be3E67be9",
+        AsyncButton(
+            title = "loyaltyCheck",
+            doAction = {
+                passportUtility.loyaltyCheck(
+                    "0xd7bf8920414268d891eb0451f4da79f98bebc9a2",
                     "0x375fa2f7fec390872a04f9c147c943eb8e48c43d"
-                )
-                showShortToast(context, "Loyalty: $result")
+                ).toString()
             }
-        }) {
-            Text(text = "loyaltyCheck")
-        }
+        )
 
-        Button(onClick = {
-            coroutineScope.launch {
+        AsyncButton(
+            title = "loyaltyAdd",
+            doAction = {
                 passportUtility.loyaltyAdd(
-                    "0xb4A47c481e789dc09F09eC14810aae4Be3E67be9",
+                    "0xd7bf8920414268d891eb0451f4da79f98bebc9a2",
                     "0x375fa2f7fec390872a04f9c147c943eb8e48c43d",
                     123.toBigInteger(),
                     456.toBigInteger()
                 )
-                showShortToast(context, "Loyalty added")
+                "Loyalty added"
             }
-        }) {
-            Text(text = "loyaltyAdd")
-        }
+        )
 
-        Button(onClick = {
-            coroutineScope.launch {
-                val result = passportUtility.svCheck(
+        AsyncButton(
+            title = "svCheck",
+            doAction = {
+                passportUtility.svCheck(
                     "0x893fBedDaDfdfb836CC069902F7270eA56fD6ebF",
                     "0x375fa2f7fec390872a04f9c147c943eb8e48c43d"
-                )
-                showShortToast(context, "SV: $result")
+                ).toString()
             }
-        }) {
-            Text(text = "svCheck")
-        }
+        )
 
-        Button(onClick = {
-            coroutineScope.launch {
-                val result = passportUtility.getContractABI(
+        AsyncButton(
+            title = "getContractABI OzzieContract",
+            doAction = {
+                passportUtility.getContractABI(
                     "OzzieContract"
                 )
-                showShortToast(context, result)
             }
-        }) {
-            Text(text = "getContractABI OzzieContract")
-        }
+        )
 
-        Button(onClick = {
-            coroutineScope.launch {
-                val result = passportUtility.authN()
-                showShortToast(context, "$result")
+        AsyncButton(
+            title = "authN",
+            doAction = {
+                passportUtility.authN()
+                ""
             }
-        }) {
-            Text(text = "authN")
-        }
+        )
 
         Button(onClick = {
             passportUtility.readNFC(context as Activity)
@@ -258,8 +243,55 @@ fun MainContent(modifier: Modifier = Modifier) {
     }
 }
 
+@Composable
+fun AsyncButton(
+    title: String,
+    doAction: suspend () -> String,
+    modifier: Modifier = Modifier
+) {
+    var isInProgress by remember { mutableStateOf(false) }
+
+    val context = LocalContext.current
+    val coroutineScope = rememberCoroutineScope()
+
+    val exceptionHandler = CoroutineExceptionHandler { _, e ->
+        Log.e(TAG, "Error: ${e.message}", e)
+        isInProgress = false
+        showShortToast(context, "Error: ${e.message ?: "Unknown"}")
+    }
+
+
+    Row(
+        verticalAlignment = CenterVertically,
+        modifier = modifier
+    ) {
+        Button(
+            onClick = {
+                isInProgress = true
+                coroutineScope.launch(exceptionHandler + SupervisorJob()) {
+                    val result = doAction()
+                    isInProgress = false
+                    showShortToast(context, "$title: $result")
+                }
+            }
+        ) {
+            Text(text = title)
+        }
+
+        if (isInProgress) {
+            CircularProgressIndicator(
+                modifier = Modifier
+                    .padding(7.dp)
+                    .size(20.dp)
+            )
+        }
+    }
+}
+
 private fun showShortToast(context: Context, message: String) {
-    Toast.makeText(context, message, Toast.LENGTH_SHORT).show()
+    (context as MainActivity).lifecycleScope.launch(Dispatchers.Main) {
+        Toast.makeText(context, message, Toast.LENGTH_SHORT).show()
+    }
 }
 
 @Preview(showBackground = true)
@@ -267,5 +299,13 @@ private fun showShortToast(context: Context, message: String) {
 fun GreetingPreview() {
     CredenzaPassportExampleTheme {
         MainContent()
+    }
+}
+
+@Preview
+@Composable
+fun AsyncButtonPreview() {
+    CredenzaPassportExampleTheme {
+        AsyncButton(title = "Sign in", doAction = { "" })
     }
 }
