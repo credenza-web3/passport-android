@@ -2,6 +2,7 @@ package com.credenza.credenzapassport
 
 import android.app.Activity
 import android.content.Context
+import android.content.pm.PackageManager
 import android.nfc.NdefMessage
 import android.nfc.NfcAdapter
 import android.nfc.NfcAdapter.FLAG_READER_NFC_A
@@ -10,6 +11,7 @@ import android.nfc.tech.IsoDep
 import android.nfc.tech.MifareClassic
 import android.nfc.tech.Ndef
 import android.nfc.tech.NfcV
+import android.os.Build
 import android.os.Bundle
 import android.util.Log
 import androidx.datastore.core.DataStore
@@ -17,8 +19,8 @@ import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.preferencesDataStore
 import com.credenza.credenzapassport.contracts.ConnectedPackagingContract
 import com.credenza.credenzapassport.contracts.ERC20TestContract
-import com.credenza.credenzapassport.contracts.LoyaltyContract
-import com.credenza.credenzapassport.contracts.MetadataMembershipContract
+import com.credenza.credenzapassport.contracts.LedgerContract
+import com.credenza.credenzapassport.contracts.MembershipContract
 import com.credenza.credenzapassport.contracts.NFTOwnership
 import com.credenza.credenzapassport.contracts.OzzieContract
 import kotlinx.coroutines.Dispatchers
@@ -37,6 +39,7 @@ import kotlin.coroutines.resumeWithException
 import kotlin.coroutines.suspendCoroutine
 
 private val Context.dataStore: DataStore<Preferences> by preferencesDataStore(name = "passport")
+private const val KEY_KRYPTKEY = "com.credenza.credenzapassport.KRYPTKEY"
 private const val TAG = "PassportUtility"
 
 interface PassportListener {
@@ -47,6 +50,7 @@ interface PassportListener {
 class PassportUtility(
     context: Context,
     val magic: Magic,
+    chainId: Long,
     private val passportListener: PassportListener
 ) {
 
@@ -65,9 +69,30 @@ class PassportUtility(
     private val web3j = Web3j.build(magic.rpcProvider)
     private val okHttpClient = OkHttpClient()
     private val passportDataStore: PassportDataStore = PassportDataStore(context.dataStore)
-    private val contractUtils: ContractUtils = ContractUtils(okHttpClient, web3j, passportDataStore)
+    private val contractUtils: ContractUtils = ContractUtils(okHttpClient, web3j, chainId, passportDataStore)
 
     private var nfcAdapter: NfcAdapter? = null
+
+    init {
+        getAdminAccount(context)?.let { adminAccount ->
+            passportDataStore.saveAdminAccount(adminAccount)
+        }
+    }
+
+    private fun getAdminAccount(context: Context): String? {
+        val applicationInfo = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            context.packageManager.getApplicationInfo(
+                context.packageName,
+                PackageManager.ApplicationInfoFlags.of(PackageManager.GET_META_DATA.toLong())
+            )
+        } else {
+            context.packageManager.getApplicationInfo(
+                context.packageName,
+                PackageManager.GET_META_DATA
+            )
+        }
+        return applicationInfo.metaData.getString(KEY_KRYPTKEY)
+    }
 
     /**
      * Initializes the credentials needed for API calls and smart contract interaction.
@@ -95,7 +120,7 @@ class PassportUtility(
      * @return An asynchronous task that returns the version number as a String.
      */
     suspend fun getVersion() =
-        checkVersion("0x61ff3d77ab2befece7b1c8e0764ac973ad85a9ef", "LoyaltyContract")
+        checkVersion("0x61ff3d77ab2befece7b1c8e0764ac973ad85a9ef", "LedgerContract")
 
     /**
      * Performs a GET request using the provided authentication token.
@@ -164,7 +189,7 @@ class PassportUtility(
 
                     accResponse.result?.firstOrNull()?.let { account ->
 
-                        passportDataStore.saveAccount(account)
+                        passportDataStore.saveUserAccount(account)
                         passportListener.onLoginComplete(account)
 
                     } ?: run {
@@ -187,7 +212,8 @@ class PassportUtility(
     ): BigInteger? =
         suspendCoroutine { continuation ->
 
-            val contract = contractUtils.getContract(OzzieContract::class.java, contractAddress)
+            val contract =
+                contractUtils.getContractAsUser(OzzieContract::class.java, contractAddress)
 
             contract.balanceOfBatch(listOf(userAddress), listOf(BigInteger("2")))
                 .sendAsync()
@@ -218,7 +244,8 @@ class PassportUtility(
     ): BigInteger? =
         suspendCoroutine { continuation ->
 
-            val contract = contractUtils.getContract(NFTOwnership::class.java, nftContractAddressC)
+            val contract =
+                contractUtils.getContractAsUser(NFTOwnership::class.java, nftContractAddressC)
 
             contract.balanceOfBatch(listOf(address), listOf(BigInteger("2")))
                 .sendAsync()
@@ -257,12 +284,12 @@ class PassportUtility(
     ): String =
         suspendCoroutine { continuation ->
 
-            val contract = contractUtils.getContract(contractType, contractAddress)
+            val contract = contractUtils.getContractAsUser(contractType, contractAddress)
 
             val versionRequest = when (contract) {
                 is OzzieContract -> contract.version
-                is MetadataMembershipContract -> contract.version
-                is LoyaltyContract -> contract.version
+                is MembershipContract -> contract.version
+                is LedgerContract -> contract.version
                 is ERC20TestContract -> contract.version
                 is ConnectedPackagingContract -> contract.version
                 else -> throw IllegalArgumentException("Contract of type $contractType is not supported")
@@ -297,14 +324,16 @@ class PassportUtility(
      */
     suspend fun addMembership(
         contractAddress: String,
-        userAddress: String,
-        metadata: String
+        userAddress: String
     ) = suspendCoroutine { continuation ->
 
         val contract =
-            contractUtils.getContract(MetadataMembershipContract::class.java, contractAddress)
+            contractUtils.getContractAsAdmin(
+                MembershipContract::class.java,
+                contractAddress
+            )
 
-        contract.addMembership(userAddress, metadata)
+        contract.addMembership(userAddress)
             .sendAsync()
             .whenComplete { _, throwable ->
                 throwable?.let {
@@ -333,7 +362,10 @@ class PassportUtility(
     ) = suspendCoroutine { continuation ->
 
         val contract =
-            contractUtils.getContract(MetadataMembershipContract::class.java, contractAddress)
+            contractUtils.getContractAsAdmin(
+                MembershipContract::class.java,
+                contractAddress
+            )
 
         contract.removeMembership(userAddress)
             .sendAsync()
@@ -367,7 +399,7 @@ class PassportUtility(
     ): Boolean = suspendCoroutine { continuation ->
 
         val contract =
-            contractUtils.getContract(MetadataMembershipContract::class.java, contractAddress)
+            contractUtils.getContractAsUser(MembershipContract::class.java, contractAddress)
 
         contract.confirmMembership(ownerAddress, userAddress)
             .sendAsync()
@@ -399,7 +431,7 @@ class PassportUtility(
     ): BigInteger = suspendCoroutine { continuation ->
 
         val contract =
-            contractUtils.getContract(LoyaltyContract::class.java, contractAddress)
+            contractUtils.getContractAsUser(LedgerContract::class.java, contractAddress)
 
         contract.checkPoints(userAddress)
             .sendAsync()
@@ -434,7 +466,7 @@ class PassportUtility(
     ) = suspendCoroutine { continuation ->
 
         val contract =
-            contractUtils.getContract(LoyaltyContract::class.java, contractAddress)
+            contractUtils.getContractAsAdmin(LedgerContract::class.java, contractAddress)
 
         contract.addPoints(userAddress, points, eventId)
             .sendAsync()
@@ -466,7 +498,7 @@ class PassportUtility(
     ): BigInteger = suspendCoroutine { continuation ->
 
         val contract =
-            contractUtils.getContract(ERC20TestContract::class.java, contractAddress)
+            contractUtils.getContractAsUser(ERC20TestContract::class.java, contractAddress)
 
         contract.balanceOf(userAddress)
             .sendAsync()
@@ -496,7 +528,10 @@ class PassportUtility(
     ): String = suspendCoroutine { continuation ->
 
         val contract =
-            contractUtils.getContract(ConnectedPackagingContract::class.java, connectedContractAddressC)
+            contractUtils.getContractAsUser(
+                ConnectedPackagingContract::class.java,
+                connectedContractAddressC
+            )
 
         contract.retrieveConnection(serialNumber)
             .sendAsync()
@@ -527,7 +562,10 @@ class PassportUtility(
     ) = suspendCoroutine { continuation ->
 
         val contract =
-            contractUtils.getContract(ConnectedPackagingContract::class.java, connectedContractAddressC)
+            contractUtils.getContractAsAdmin(
+                ConnectedPackagingContract::class.java,
+                connectedContractAddressC
+            )
 
         contract.claimConnection(serialNumber, userAddress)
             .sendAsync()
@@ -556,7 +594,10 @@ class PassportUtility(
     ) = suspendCoroutine { continuation ->
 
         val contract =
-            contractUtils.getContract(ConnectedPackagingContract::class.java, connectedContractAddressC)
+            contractUtils.getContractAsAdmin(
+                ConnectedPackagingContract::class.java,
+                connectedContractAddressC
+            )
 
         contract.revokeConnection(serialNumber)
             .sendAsync()

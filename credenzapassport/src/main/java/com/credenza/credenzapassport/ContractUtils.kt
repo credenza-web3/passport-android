@@ -2,8 +2,8 @@ package com.credenza.credenzapassport
 
 import com.credenza.credenzapassport.contracts.ConnectedPackagingContract
 import com.credenza.credenzapassport.contracts.ERC20TestContract
-import com.credenza.credenzapassport.contracts.LoyaltyContract
-import com.credenza.credenzapassport.contracts.MetadataMembershipContract
+import com.credenza.credenzapassport.contracts.LedgerContract
+import com.credenza.credenzapassport.contracts.MembershipContract
 import com.credenza.credenzapassport.contracts.NFTOwnership
 import com.credenza.credenzapassport.contracts.OzzieContract
 import kotlinx.coroutines.Dispatchers
@@ -13,8 +13,10 @@ import okhttp3.OkHttpClient
 import okhttp3.Request
 import org.json.JSONException
 import org.json.JSONObject
+import org.web3j.crypto.Credentials
 import org.web3j.protocol.Web3j
 import org.web3j.tx.Contract
+import org.web3j.tx.RawTransactionManager
 import org.web3j.tx.gas.DefaultGasProvider
 import java.io.IOException
 import kotlin.coroutines.resume
@@ -24,6 +26,7 @@ import kotlin.coroutines.suspendCoroutine
 class ContractUtils(
     private val okHttpClient: OkHttpClient,
     private val web3j: Web3j,
+    private val chainId: Long,
     private val passportDataStore: PassportDataStore
 ) {
 
@@ -34,8 +37,8 @@ class ContractUtils(
 
         private val CONTRACT_CLASSES = mapOf(
             "OzzieContract" to OzzieContract::class.java,
-            "MetadataMembershipContract" to MetadataMembershipContract::class.java,
-            "LoyaltyContract" to LoyaltyContract::class.java,
+            "MembershipContract" to MembershipContract::class.java,
+            "LedgerContract" to LedgerContract::class.java,
             "ERC20TestContract" to ERC20TestContract::class.java,
             "ConnectedPackagingContract" to ConnectedPackagingContract::class.java,
             "NFTOwnership" to NFTOwnership::class.java,
@@ -82,6 +85,43 @@ class ContractUtils(
         }
     }
 
+    fun getContractAsUser(
+        contractClassName: String,
+        contractAddress: String
+    ): Contract = getContract(
+        contractClassName = contractClassName,
+        contractAddress = contractAddress,
+        accountAddress = getAccountAddress()
+    )
+
+    fun getContractAsAdmin(
+        contractClassName: String,
+        contractAddress: String
+    ): Contract = getContract(
+        contractClassName = contractClassName,
+        contractAddress = contractAddress,
+        accountAddress = getAdminPrivateKey()
+    )
+
+    fun <T : Contract> getContractAsUser(
+        contractClass: Class<T>,
+        contractAddress: String
+    ): T = getContract(
+        contractClass = contractClass,
+        contractAddress = contractAddress,
+        accountAddress = getAccountAddress()
+    )
+
+    fun <T : Contract> getContractAsAdmin(
+        contractClass: Class<T>,
+        contractAddress: String
+    ): T = getContract(
+        contractClass = contractClass,
+        contractAddress = contractAddress,
+        accountAddress = getAdminPrivateKey(),
+        asAdmin = true
+    )
+
     /**
      * Returns a smart contract object.
      *
@@ -89,71 +129,90 @@ class ContractUtils(
      * @param contractAddress: The address of the contract.
      * @return The object of the smart contract class
      */
-    fun getContract(
+    private fun getContract(
         contractClassName: String,
-        contractAddress: String
+        contractAddress: String,
+        accountAddress: String
     ): Contract = runBlocking {
         val contractClass = CONTRACT_CLASSES[contractClassName]?.asSubclass(Contract::class.java)
             ?: throw IllegalArgumentException("Contract of type $contractClassName is not supported")
 
         return@runBlocking getContract(
             contractClass,
-            contractAddress
+            contractAddress,
+            accountAddress
         )
     }
 
-    fun <T : Contract> getContract(
+    private fun <T : Contract> getContract(
         contractClass: Class<T>,
-        contractAddress: String
+        contractAddress: String,
+        accountAddress: String = "",
+        asAdmin: Boolean = false
     ): T = runBlocking {
         val gasProvider = DefaultGasProvider()
-        val accountAddress = passportDataStore.getAccount()
-            ?: throw IllegalStateException("Current user is not signed in")
+        val privateKey = getAdminPrivateKey()
 
         return@runBlocking when (contractClass) {
             OzzieContract::class.java -> OzzieContract.load(
                 contractAddress,
                 web3j,
-                MagicTxnManager(web3j, accountAddress),
+                getTransactionManager(accountAddress, privateKey, asAdmin),
                 gasProvider
             ) as T
 
-            MetadataMembershipContract::class.java -> MetadataMembershipContract.load(
+            MembershipContract::class.java -> MembershipContract.load(
                 contractAddress,
                 web3j,
-                CustomMagicTxnManager(web3j, accountAddress),
+                getTransactionManager(accountAddress, privateKey, asAdmin),
                 gasProvider
             ) as T
 
-            LoyaltyContract::class.java -> LoyaltyContract.load(
+            LedgerContract::class.java -> LedgerContract.load(
                 contractAddress,
                 web3j,
-                MagicTxnManager(web3j, accountAddress),
+                getTransactionManager(accountAddress, privateKey, asAdmin),
                 gasProvider
             ) as T
 
             ERC20TestContract::class.java -> ERC20TestContract.load(
                 contractAddress,
                 web3j,
-                MagicTxnManager(web3j, accountAddress),
+                getTransactionManager(accountAddress, privateKey, asAdmin),
                 gasProvider
             ) as T
 
             ConnectedPackagingContract::class.java -> ConnectedPackagingContract.load(
                 contractAddress,
                 web3j,
-                MagicTxnManager(web3j, accountAddress),
+                getTransactionManager(accountAddress, privateKey, asAdmin),
                 gasProvider
             ) as T
 
             NFTOwnership::class.java -> NFTOwnership.load(
                 contractAddress,
                 web3j,
-                MagicTxnManager(web3j, accountAddress),
+                getTransactionManager(accountAddress, privateKey, asAdmin),
                 gasProvider
             ) as T
 
             else -> throw IllegalArgumentException("Contract of type ${contractClass.name} is not supported")
         }
     }
+
+    private fun getTransactionManager(
+        accountAddress: String = "",
+        privateKey: String = "",
+        asAdmin: Boolean = false
+    ) = if (asAdmin) RawTransactionManager(
+        web3j,
+        Credentials.create(privateKey),
+        chainId
+    ) else MagicTxnManager(web3j, accountAddress)
+
+    private fun getAccountAddress() = passportDataStore.getUserAccount()
+        ?: throw IllegalStateException("Current user is not signed in")
+
+    private fun getAdminPrivateKey() = passportDataStore.getAdminAccount()
+        ?: throw IllegalStateException("KRYPTKEY is missed in config files")
 }

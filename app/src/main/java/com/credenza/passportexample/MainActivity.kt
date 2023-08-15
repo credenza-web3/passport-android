@@ -67,6 +67,7 @@ fun MainContent(modifier: Modifier = Modifier) {
     val passportUtility = PassportUtility(
         context = context.applicationContext,
         magic = (context.applicationContext as CredenzaPassportApplication).magic,
+        chainId = chainId.toLong(),
         passportListener = object : PassportListener {
 
             override fun onLoginComplete(address: String) {
@@ -155,8 +156,7 @@ fun MainContent(modifier: Modifier = Modifier) {
             doAction = {
                 passportUtility.addMembership(
                     "0xDf3c92e0FD7eCc8199a453C7D72C685E5578b1fb",
-                    "0x375fa2f7fec390872a04f9c147c943eb8e48c43d",
-                    "app metameta"
+                    "0x375fa2f7fec390872a04f9c147c943eb8e48c43d"
                 )
                 "Membership added"
             }
@@ -178,7 +178,7 @@ fun MainContent(modifier: Modifier = Modifier) {
             doAction = {
                 val hasMembership = passportUtility.confirmMembership(
                     "0xDf3c92e0FD7eCc8199a453C7D72C685E5578b1fb",
-                    "0x612Bf0bD4c3519129D67e53F4dBa817e8Ce457ac",
+                    "0xa8c9d33bf5990ae10a685a5f4869ba5dcb176ae8",
                     "0x375fa2f7fec390872a04f9c147c943eb8e48c43d"
                 )
                 if (hasMembership) "Has membership" else "No membership"
