@@ -186,6 +186,17 @@ fun MainContent(modifier: Modifier = Modifier) {
         )
 
         AsyncButton(
+            title = "getMembershipMetadata",
+            doAction = {
+                passportUtility.getMembershipMetadata(
+                    "0x3366F71c99A4684282BfE8af800194abeEF5F4C3",
+                    "0xa8c9d33bf5990ae10a685a5f4869ba5dcb176ae8",
+                    "0x375fa2f7fec390872a04f9c147c943eb8e48c43d"
+                )
+            }
+        )
+
+        AsyncButton(
             title = "loyaltyCheck",
             doAction = {
                 passportUtility.loyaltyCheck(
@@ -205,6 +216,53 @@ fun MainContent(modifier: Modifier = Modifier) {
                     456.toBigInteger()
                 )
                 "Loyalty added"
+            }
+        )
+
+        AsyncButton(
+            title = "convertPointsToCoins",
+            doAction = {
+                passportUtility.convertPointsToCoins(
+                    "0xd7bf8920414268d891eb0451f4da79f98bebc9a2",
+                    "0x375fa2f7fec390872a04f9c147c943eb8e48c43d",
+                    123.toBigInteger()
+                )
+                "Converted"
+            }
+        )
+
+        AsyncButton(
+            title = "loyaltyForfeit",
+            doAction = {
+                passportUtility.loyaltyForfeit(
+                    "0xd7bf8920414268d891eb0451f4da79f98bebc9a2",
+                    "0x375fa2f7fec390872a04f9c147c943eb8e48c43d",
+                    123.toBigInteger()
+                )
+                "Points forfeited"
+            }
+        )
+
+        AsyncButton(
+            title = "loyaltyRedeem",
+            doAction = {
+                passportUtility.loyaltyRedeem(
+                    "0xd7bf8920414268d891eb0451f4da79f98bebc9a2",
+                    "0x375fa2f7fec390872a04f9c147c943eb8e48c43d",
+                    123.toBigInteger(),
+                    456.toBigInteger()
+                )
+                "Points reduced"
+            }
+        )
+
+        AsyncButton(
+            title = "loyaltyLifetimeCheck",
+            doAction = {
+                passportUtility.loyaltyLifetimeCheck(
+                    "0xd7bf8920414268d891eb0451f4da79f98bebc9a2",
+                    "0x375fa2f7fec390872a04f9c147c943eb8e48c43d"
+                ).toString()
             }
         )
 

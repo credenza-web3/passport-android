@@ -4,6 +4,7 @@ import com.credenza.credenzapassport.contracts.ConnectedPackagingContract
 import com.credenza.credenzapassport.contracts.ERC20TestContract
 import com.credenza.credenzapassport.contracts.LedgerContract
 import com.credenza.credenzapassport.contracts.MembershipContract
+import com.credenza.credenzapassport.contracts.MetadataMembershipContract
 import com.credenza.credenzapassport.contracts.NFTOwnership
 import com.credenza.credenzapassport.contracts.OzzieContract
 import kotlinx.coroutines.Dispatchers
@@ -38,6 +39,7 @@ class ContractUtils(
         private val CONTRACT_CLASSES = mapOf(
             "OzzieContract" to OzzieContract::class.java,
             "MembershipContract" to MembershipContract::class.java,
+            "MetadataMembershipContract" to MetadataMembershipContract::class.java,
             "LedgerContract" to LedgerContract::class.java,
             "ERC20TestContract" to ERC20TestContract::class.java,
             "ConnectedPackagingContract" to ConnectedPackagingContract::class.java,
@@ -151,48 +153,55 @@ class ContractUtils(
         asAdmin: Boolean = false
     ): T = runBlocking {
         val gasProvider = DefaultGasProvider()
-        val privateKey = getAdminPrivateKey()
+        val transactionManager = getTransactionManager(accountAddress, getAdminPrivateKey(), asAdmin)
 
         return@runBlocking when (contractClass) {
             OzzieContract::class.java -> OzzieContract.load(
                 contractAddress,
                 web3j,
-                getTransactionManager(accountAddress, privateKey, asAdmin),
+                transactionManager,
                 gasProvider
             ) as T
 
             MembershipContract::class.java -> MembershipContract.load(
                 contractAddress,
                 web3j,
-                getTransactionManager(accountAddress, privateKey, asAdmin),
+                transactionManager,
+                gasProvider
+            ) as T
+
+            MetadataMembershipContract::class.java -> MetadataMembershipContract.load(
+                contractAddress,
+                web3j,
+                transactionManager,
                 gasProvider
             ) as T
 
             LedgerContract::class.java -> LedgerContract.load(
                 contractAddress,
                 web3j,
-                getTransactionManager(accountAddress, privateKey, asAdmin),
+                transactionManager,
                 gasProvider
             ) as T
 
             ERC20TestContract::class.java -> ERC20TestContract.load(
                 contractAddress,
                 web3j,
-                getTransactionManager(accountAddress, privateKey, asAdmin),
+                transactionManager,
                 gasProvider
             ) as T
 
             ConnectedPackagingContract::class.java -> ConnectedPackagingContract.load(
                 contractAddress,
                 web3j,
-                getTransactionManager(accountAddress, privateKey, asAdmin),
+                transactionManager,
                 gasProvider
             ) as T
 
             NFTOwnership::class.java -> NFTOwnership.load(
                 contractAddress,
                 web3j,
-                getTransactionManager(accountAddress, privateKey, asAdmin),
+                transactionManager,
                 gasProvider
             ) as T
 

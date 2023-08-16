@@ -21,6 +21,7 @@ import com.credenza.credenzapassport.contracts.ConnectedPackagingContract
 import com.credenza.credenzapassport.contracts.ERC20TestContract
 import com.credenza.credenzapassport.contracts.LedgerContract
 import com.credenza.credenzapassport.contracts.MembershipContract
+import com.credenza.credenzapassport.contracts.MetadataMembershipContract
 import com.credenza.credenzapassport.contracts.NFTOwnership
 import com.credenza.credenzapassport.contracts.OzzieContract
 import kotlinx.coroutines.Dispatchers
@@ -419,6 +420,43 @@ class PassportUtility(
     }
 
     /**
+     * For members, this method will retrieve the metadata that was stored by customerAddress
+     * associated with a member with the public key customerAddress. Like confirmMembership,
+     * this is accessible to all authorized callers as defined by the contract owner.
+     *
+     * @param contractAddress: The Ethereum address of the contract.
+     * @param ownerAddress: The Ethereum address of the owner of the contract.
+     * @param userAddress: The Ethereum address of the user to be checked.
+     * @return String with membership metadata.
+     */
+    suspend fun getMembershipMetadata(
+        contractAddress: String,
+        ownerAddress: String,
+        userAddress: String
+    ): String = suspendCoroutine { continuation ->
+
+        val contract =
+            contractUtils.getContractAsUser(MetadataMembershipContract::class.java, contractAddress)
+
+        contract.getMembershipMetadata(ownerAddress, userAddress)
+            .sendAsync()
+            .whenComplete { result, throwable ->
+                throwable?.let {
+                    Log.e(
+                        TAG,
+                        "Failed to getMembershipMetadata for contract $contractAddress",
+                        throwable
+                    )
+                    continuation.resumeWithException(it)
+                    return@whenComplete
+                }
+
+                continuation.resume(result)
+            }
+    }
+
+
+    /**
      * Calculates the loyalty points of a given user for the specified loyalty contract.
      *
      * @param contractAddress: The Ethereum address of the loyalty contract.
@@ -482,6 +520,145 @@ class PassportUtility(
                 }
 
                 continuation.resume(Unit)
+            }
+    }
+
+    /**
+     * Many loyalty programs want to reward users by converting points to stored value.
+     * This transaction redeems points and increases stored value balances for recipient.
+     *
+     * @param contractAddress: The address of the loyalty contract.
+     * @param userAddress: The address of the user's account to convert points.
+     * @param points: The number of points to convert.
+     */
+    suspend fun convertPointsToCoins(
+        contractAddress: String,
+        userAddress: String,
+        points: BigInteger
+    ) = suspendCoroutine { continuation ->
+
+        val contract =
+            contractUtils.getContractAsAdmin(LedgerContract::class.java, contractAddress)
+
+        contract.convertPointsToCoins(userAddress, points)
+            .sendAsync()
+            .whenComplete { _, throwable ->
+                throwable?.let {
+                    Log.e(
+                        TAG,
+                        "Failed to convertPointsToCoins for contract $contractAddress",
+                        throwable
+                    )
+                    continuation.resumeWithException(it)
+                    return@whenComplete
+                }
+
+                continuation.resume(Unit)
+            }
+    }
+
+    /**
+     * Separated from redemption, this is called if points expire or other activities cause
+     * a balance to be reduced by amount without any benefit going to the member recipient.
+     *
+     * @param contractAddress: The address of the loyalty contract.
+     * @param userAddress: The address of the user's account to remove points from.
+     * @param points: The number of points to remove from the user's account.
+     */
+    suspend fun loyaltyForfeit(
+        contractAddress: String,
+        userAddress: String,
+        points: BigInteger
+    ) = suspendCoroutine { continuation ->
+
+        val contract =
+            contractUtils.getContractAsAdmin(LedgerContract::class.java, contractAddress)
+
+        contract.forfeitPoints(userAddress, points)
+            .sendAsync()
+            .whenComplete { _, throwable ->
+                throwable?.let {
+                    Log.e(
+                        TAG,
+                        "Failed to loyaltyForfeit for contract $contractAddress",
+                        throwable
+                    )
+                    continuation.resumeWithException(it)
+                    return@whenComplete
+                }
+
+                continuation.resume(Unit)
+            }
+    }
+
+    /**
+     * If points are to be converted into stored value or rewards, this can be called to reduce
+     * the current points balance for the recipient by pointsAmt, associated with a redemption
+     * event eventId.
+     *
+     * @param contractAddress: The address of the loyalty contract.
+     * @param userAddress: The address of the user's account to remove points from.
+     * @param points: The number of points to remove from the user's account.
+     * @param eventId: The id of event.
+     */
+    suspend fun loyaltyRedeem(
+        contractAddress: String,
+        userAddress: String,
+        points: BigInteger,
+        eventId: BigInteger
+    ) = suspendCoroutine { continuation ->
+
+        val contract =
+            contractUtils.getContractAsAdmin(LedgerContract::class.java, contractAddress)
+
+        contract.redeemPoints(userAddress, points, eventId)
+            .sendAsync()
+            .whenComplete { _, throwable ->
+                throwable?.let {
+                    Log.e(
+                        TAG,
+                        "Failed to loyaltyRedeem for contract $contractAddress",
+                        throwable
+                    )
+                    continuation.resumeWithException(it)
+                    return@whenComplete
+                }
+
+                continuation.resume(Unit)
+            }
+    }
+
+
+    /**
+     * Returns the balance of current points owned by recipient, which does NOT take all redemptions
+     * and forfeitures into account. This amount can only grow.
+     *
+     * @param contractAddress: The Ethereum address of the loyalty contract.
+     * @param userAddress: The Ethereum address of the user to check loyalty points for.
+     * @return A `BigInteger` representing the user's loyalty points.
+     */
+    suspend fun loyaltyLifetimeCheck(
+        contractAddress: String,
+        userAddress: String
+    ): BigInteger = suspendCoroutine { continuation ->
+
+        val contract =
+            contractUtils.getContractAsUser(LedgerContract::class.java, contractAddress)
+
+        contract.checkLifetimePoints(userAddress)
+            .sendAsync()
+            .whenComplete { points, throwable ->
+                throwable?.let {
+                    Log.e(
+                        TAG,
+                        "Failed to loyaltyLifetimeCheck for contract $contractAddress",
+                        throwable
+                    )
+                    continuation.resumeWithException(it)
+                    return@whenComplete
+                }
+
+                continuation.resume(points)
             }
     }
 
