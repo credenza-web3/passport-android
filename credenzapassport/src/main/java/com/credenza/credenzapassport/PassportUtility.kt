@@ -24,6 +24,7 @@ import com.credenza.credenzapassport.contracts.MembershipContract
 import com.credenza.credenzapassport.contracts.MetadataMembershipContract
 import com.credenza.credenzapassport.contracts.NFTOwnership
 import com.credenza.credenzapassport.contracts.OzzieContract
+import com.google.mlkit.vision.codescanner.GmsBarcodeScanning
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.runBlocking
 import link.magic.android.Magic
@@ -93,6 +94,21 @@ class PassportUtility(
             )
         }
         return applicationInfo.metaData.getString(KEY_KRYPTKEY)
+    }
+
+    suspend fun scanQRCode(context: Context): String? = suspendCoroutine { continuation ->
+        GmsBarcodeScanning.getClient(context)
+            .startScan()
+            .addOnSuccessListener { barcode ->
+                continuation.resume(barcode.url?.url)
+            }
+            .addOnCanceledListener {
+                continuation.resume(null)
+            }
+            .addOnFailureListener { e ->
+                Log.e(TAG, "Failed to scan QR code", e)
+                continuation.resumeWithException(e)
+            }
     }
 
     /**

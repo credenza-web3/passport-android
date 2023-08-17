@@ -298,6 +298,13 @@ fun MainContent(modifier: Modifier = Modifier) {
         }) {
             Text(text = "readNFC")
         }
+
+        AsyncButton(
+            title = "scanQRCode",
+            doAction = {
+                passportUtility.scanQRCode(context) ?: ""
+            }
+        )
     }
 }
 
