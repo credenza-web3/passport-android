@@ -4,11 +4,11 @@ plugins {
 }
 
 android {
-    namespace 'com.credenza.passportexample'
+    namespace 'com.credenza3.passportexample'
     compileSdk 33
 
     defaultConfig {
-        applicationId "com.credenza.passportexample"
+        applicationId "com.credenza3.passportexample"
         minSdk 24
         targetSdk 33
         versionCode 1
