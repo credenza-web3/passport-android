@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
@@ -30,6 +31,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment.Companion.CenterVertically
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.lifecycleScope
@@ -64,6 +66,8 @@ class MainActivity : ComponentActivity() {
 fun MainContent(modifier: Modifier = Modifier) {
     val context = LocalContext.current
 
+    var userAddress: String? by remember { mutableStateOf(null) }
+
     val passportUtility = PassportUtility(
         context = context.applicationContext,
         magic = (context.applicationContext as CredenzaPassportApplication).magic,
@@ -72,6 +76,7 @@ fun MainContent(modifier: Modifier = Modifier) {
 
             override fun onLoginComplete(address: String) {
                 showShortToast(context, "Login success for $address")
+                userAddress = address
             }
 
             override fun onNFCScanComplete(address: String) {
@@ -95,10 +100,11 @@ fun MainContent(modifier: Modifier = Modifier) {
         var email by remember { mutableStateOf("") }
         TextField(
             value = email,
-            onValueChange = { email = it },
+            onValueChange = { email = it.trim() },
             placeholder = {
                 Text("Enter your email")
-            }
+            },
+            keyboardOptions = KeyboardOptions(keyboardType =  KeyboardType.Email)
         )
 
         Button(onClick = {
@@ -107,191 +113,193 @@ fun MainContent(modifier: Modifier = Modifier) {
             Text(text = "Sign in")
         }
 
-        AsyncButton(
-            title = "getVersion",
-            doAction = { passportUtility.getVersion() }
-        )
+        userAddress?.let { userAddress ->
+            AsyncButton(
+                title = "getVersion",
+                doAction = { passportUtility.getVersion() }
+            )
 
-        AsyncButton(
-            title = "nftCheck",
-            doAction = {
-                passportUtility.nftCheck(
-                    "0x4d20968f609bf10e06495529590623d5d858c5c7",
-                    "0x2d3e53bea19d756624dbfa3a9cd9b616878cf698"
-                )?.toString() ?: ""
-            }
-        )
+            AsyncButton(
+                title = "nftCheck",
+                doAction = {
+                    passportUtility.nftCheck(
+                        "0x4d20968f609bf10e06495529590623d5d858c5c7",
+                        userAddress
+                    )?.toString() ?: ""
+                }
+            )
 
-        AsyncButton(
-            title = "checkVersion OzzieContract",
-            doAction = {
-                passportUtility.checkVersion(
-                    "0x4d20968f609bf10e06495529590623d5d858c5c7",
-                    "OzzieContract"
-                )
-            }
-        )
+            AsyncButton(
+                title = "checkVersion OzzieContract",
+                doAction = {
+                    passportUtility.checkVersion(
+                        "0x4d20968f609bf10e06495529590623d5d858c5c7",
+                        "OzzieContract"
+                    )
+                }
+            )
 
-        AsyncButton(
-            title = "checkVersion LedgerContract",
-            doAction = {
-                passportUtility.checkVersion(
-                    "0x61ff3d77ab2befece7b1c8e0764ac973ad85a9ef",
-                    "LedgerContract"
-                )
-            }
-        )
+            AsyncButton(
+                title = "checkVersion LedgerContract",
+                doAction = {
+                    passportUtility.checkVersion(
+                        "0x61ff3d77ab2befece7b1c8e0764ac973ad85a9ef",
+                        "LedgerContract"
+                    )
+                }
+            )
 
-        AsyncButton(
-            title = "checkNFTOwnership",
-            doAction = {
-                passportUtility.checkNFTOwnership(
-                    "0xfb28530d9d065ec81e826fa61baa51748c1ee775"
-                )?.toString() ?: ""
-            }
-        )
+            AsyncButton(
+                title = "checkNFTOwnership",
+                doAction = {
+                    passportUtility.checkNFTOwnership(
+                        "0xfb28530d9d065ec81e826fa61baa51748c1ee775"
+                    )?.toString() ?: ""
+                }
+            )
 
-        AsyncButton(
-            title = "addMembership",
-            doAction = {
-                passportUtility.addMembership(
-                    "0xDf3c92e0FD7eCc8199a453C7D72C685E5578b1fb",
-                    "0x375fa2f7fec390872a04f9c147c943eb8e48c43d"
-                )
-                "Membership added"
-            }
-        )
+            AsyncButton(
+                title = "addMembership",
+                doAction = {
+                    passportUtility.addMembership(
+                        "0xDf3c92e0FD7eCc8199a453C7D72C685E5578b1fb",
+                        userAddress
+                    )
+                    "Membership added"
+                }
+            )
 
-        AsyncButton(
-            title = "removeMembership",
-            doAction = {
-                passportUtility.removeMembership(
-                    "0xDf3c92e0FD7eCc8199a453C7D72C685E5578b1fb",
-                    "0x375fa2f7fec390872a04f9c147c943eb8e48c43d"
-                )
-                "Membership removed"
-            }
-        )
+            AsyncButton(
+                title = "removeMembership",
+                doAction = {
+                    passportUtility.removeMembership(
+                        "0xDf3c92e0FD7eCc8199a453C7D72C685E5578b1fb",
+                        userAddress
+                    )
+                    "Membership removed"
+                }
+            )
 
-        AsyncButton(
-            title = "confirmMembership",
-            doAction = {
-                val hasMembership = passportUtility.confirmMembership(
-                    "0xDf3c92e0FD7eCc8199a453C7D72C685E5578b1fb",
-                    "0xa8c9d33bf5990ae10a685a5f4869ba5dcb176ae8",
-                    "0x375fa2f7fec390872a04f9c147c943eb8e48c43d"
-                )
-                if (hasMembership) "Has membership" else "No membership"
-            }
-        )
+            AsyncButton(
+                title = "confirmMembership",
+                doAction = {
+                    val hasMembership = passportUtility.confirmMembership(
+                        "0xDf3c92e0FD7eCc8199a453C7D72C685E5578b1fb",
+                        "0xa8c9d33bf5990ae10a685a5f4869ba5dcb176ae8",
+                        userAddress
+                    )
+                    if (hasMembership) "Has membership" else "No membership"
+                }
+            )
 
-        AsyncButton(
-            title = "getMembershipMetadata",
-            doAction = {
-                passportUtility.getMembershipMetadata(
-                    "0x3366F71c99A4684282BfE8af800194abeEF5F4C3",
-                    "0xa8c9d33bf5990ae10a685a5f4869ba5dcb176ae8",
-                    "0x375fa2f7fec390872a04f9c147c943eb8e48c43d"
-                )
-            }
-        )
+            AsyncButton(
+                title = "getMembershipMetadata",
+                doAction = {
+                    passportUtility.getMembershipMetadata(
+                        "0x3366F71c99A4684282BfE8af800194abeEF5F4C3",
+                        "0xa8c9d33bf5990ae10a685a5f4869ba5dcb176ae8",
+                        userAddress
+                    )
+                }
+            )
 
-        AsyncButton(
-            title = "loyaltyCheck",
-            doAction = {
-                passportUtility.loyaltyCheck(
-                    "0xd7bf8920414268d891eb0451f4da79f98bebc9a2",
-                    "0x375fa2f7fec390872a04f9c147c943eb8e48c43d"
-                ).toString()
-            }
-        )
+            AsyncButton(
+                title = "loyaltyCheck",
+                doAction = {
+                    passportUtility.loyaltyCheck(
+                        "0xd7bf8920414268d891eb0451f4da79f98bebc9a2",
+                        userAddress
+                    ).toString()
+                }
+            )
 
-        AsyncButton(
-            title = "loyaltyAdd",
-            doAction = {
-                passportUtility.loyaltyAdd(
-                    "0xd7bf8920414268d891eb0451f4da79f98bebc9a2",
-                    "0x375fa2f7fec390872a04f9c147c943eb8e48c43d",
-                    123.toBigInteger(),
-                    456.toBigInteger()
-                )
-                "Loyalty added"
-            }
-        )
+            AsyncButton(
+                title = "loyaltyAdd",
+                doAction = {
+                    passportUtility.loyaltyAdd(
+                        "0xd7bf8920414268d891eb0451f4da79f98bebc9a2",
+                        userAddress,
+                        123.toBigInteger(),
+                        456.toBigInteger()
+                    )
+                    "Loyalty added"
+                }
+            )
 
-        AsyncButton(
-            title = "convertPointsToCoins",
-            doAction = {
-                passportUtility.convertPointsToCoins(
-                    "0xd7bf8920414268d891eb0451f4da79f98bebc9a2",
-                    "0x375fa2f7fec390872a04f9c147c943eb8e48c43d",
-                    123.toBigInteger()
-                )
-                "Converted"
-            }
-        )
+            AsyncButton(
+                title = "convertPointsToCoins",
+                doAction = {
+                    passportUtility.convertPointsToCoins(
+                        "0xd7bf8920414268d891eb0451f4da79f98bebc9a2",
+                        userAddress,
+                        123.toBigInteger()
+                    )
+                    "Converted"
+                }
+            )
 
-        AsyncButton(
-            title = "loyaltyForfeit",
-            doAction = {
-                passportUtility.loyaltyForfeit(
-                    "0xd7bf8920414268d891eb0451f4da79f98bebc9a2",
-                    "0x375fa2f7fec390872a04f9c147c943eb8e48c43d",
-                    123.toBigInteger()
-                )
-                "Points forfeited"
-            }
-        )
+            AsyncButton(
+                title = "loyaltyForfeit",
+                doAction = {
+                    passportUtility.loyaltyForfeit(
+                        "0xd7bf8920414268d891eb0451f4da79f98bebc9a2",
+                        userAddress,
+                        123.toBigInteger()
+                    )
+                    "Points forfeited"
+                }
+            )
 
-        AsyncButton(
-            title = "loyaltyRedeem",
-            doAction = {
-                passportUtility.loyaltyRedeem(
-                    "0xd7bf8920414268d891eb0451f4da79f98bebc9a2",
-                    "0x375fa2f7fec390872a04f9c147c943eb8e48c43d",
-                    123.toBigInteger(),
-                    456.toBigInteger()
-                )
-                "Points reduced"
-            }
-        )
+            AsyncButton(
+                title = "loyaltyRedeem",
+                doAction = {
+                    passportUtility.loyaltyRedeem(
+                        "0xd7bf8920414268d891eb0451f4da79f98bebc9a2",
+                        userAddress,
+                        123.toBigInteger(),
+                        456.toBigInteger()
+                    )
+                    "Points reduced"
+                }
+            )
 
-        AsyncButton(
-            title = "loyaltyLifetimeCheck",
-            doAction = {
-                passportUtility.loyaltyLifetimeCheck(
-                    "0xd7bf8920414268d891eb0451f4da79f98bebc9a2",
-                    "0x375fa2f7fec390872a04f9c147c943eb8e48c43d"
-                ).toString()
-            }
-        )
+            AsyncButton(
+                title = "loyaltyLifetimeCheck",
+                doAction = {
+                    passportUtility.loyaltyLifetimeCheck(
+                        "0xd7bf8920414268d891eb0451f4da79f98bebc9a2",
+                        userAddress
+                    ).toString()
+                }
+            )
 
-        AsyncButton(
-            title = "svCheck",
-            doAction = {
-                passportUtility.svCheck(
-                    "0x893fBedDaDfdfb836CC069902F7270eA56fD6ebF",
-                    "0x375fa2f7fec390872a04f9c147c943eb8e48c43d"
-                ).toString()
-            }
-        )
+            AsyncButton(
+                title = "svCheck",
+                doAction = {
+                    passportUtility.svCheck(
+                        "0x893fBedDaDfdfb836CC069902F7270eA56fD6ebF",
+                        userAddress
+                    ).toString()
+                }
+            )
 
-        AsyncButton(
-            title = "getContractABI OzzieContract",
-            doAction = {
-                passportUtility.getContractABI(
-                    "OzzieContract"
-                )
-            }
-        )
+            AsyncButton(
+                title = "getContractABI OzzieContract",
+                doAction = {
+                    passportUtility.getContractABI(
+                        "OzzieContract"
+                    )
+                }
+            )
 
-        AsyncButton(
-            title = "authN",
-            doAction = {
-                passportUtility.authN()
-                ""
-            }
-        )
+            AsyncButton(
+                title = "authN",
+                doAction = {
+                    passportUtility.authN()
+                    ""
+                }
+            )
+        }
 
         Button(onClick = {
             passportUtility.readNFC(context as Activity)
