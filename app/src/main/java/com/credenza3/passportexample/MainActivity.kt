@@ -13,15 +13,13 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.Divider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextField
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -31,7 +29,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment.Companion.CenterVertically
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.lifecycleScope
@@ -54,23 +51,26 @@ class MainActivity : ComponentActivity() {
                     modifier = Modifier.fillMaxSize(),
                     color = MaterialTheme.colorScheme.background
                 ) {
-                    MainContent()
+                    MainContent(this)
                 }
             }
         }
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun MainContent(modifier: Modifier = Modifier) {
+fun MainContent(
+    activity: Activity,
+    modifier: Modifier = Modifier,
+) {
     val context = LocalContext.current
+
+    val coroutineScope = rememberCoroutineScope()
 
     var userAddress: String? by remember { mutableStateOf(null) }
 
-    val passportUtility = PassportUtility(
+    PassportUtility.init(
         context = context.applicationContext,
-        magic = (context.applicationContext as CredenzaPassportApplication).magic,
         chainId = chainId.toLong(),
         passportListener = object : PassportListener {
 
@@ -84,7 +84,7 @@ fun MainContent(modifier: Modifier = Modifier) {
             }
         })
 
-    passportUtility.initializeCredentials(
+    PassportUtility.initializeCredentials(
         authenticationToken = "4ouieBFuLE1J5icxWwsYiOY1VzPNxwQiQX4FfjWm9sTtjlFFm9sFbefxB83iNf2C",
         nftContractAddress = "0x4d20968f609bf10e06495529590623d5d858c5c7", // OzzieContract
         storedValueContractAddress = "",
@@ -97,53 +97,61 @@ fun MainContent(modifier: Modifier = Modifier) {
             .verticalScroll(rememberScrollState())
     ) {
 
-        var email by remember { mutableStateOf("") }
-        TextField(
-            value = email,
-            onValueChange = { email = it.trim() },
-            placeholder = {
-                Text("Enter your email")
-            },
-            keyboardOptions = KeyboardOptions(keyboardType =  KeyboardType.Email)
-        )
+        if (!PassportUtility.isUserLoggedIn()) {
+            Button(onClick = {
+                coroutineScope.launch {
+                    PassportUtility.handleSignIn(activity)
+                }
+            }) {
+                Text(text = "Sign in")
+            }
+        } else {
+            userAddress = PassportUtility.getCurrentAccount()
+            Button(onClick = {
+                coroutineScope.launch {
+                    PassportUtility.logout()
+                    userAddress = null
+                }
+            }) {
+                Text(text = "Sign out")
+            }
 
-        Button(onClick = {
-            passportUtility.handleSignIn(context, email)
-        }) {
-            Text(text = "Sign in")
+            SectionDivider()
         }
 
         userAddress?.let { userAddress ->
+
             AsyncButton(
                 title = "getVersion",
-                doAction = { passportUtility.getVersion() }
+                doAction = { PassportUtility.getVersion() }
             )
 
-            AsyncButton(
-                title = "nftCheck",
-                doAction = {
-                    passportUtility.nftCheck(
-                        "0x4d20968f609bf10e06495529590623d5d858c5c7",
-                        userAddress
-                    )?.toString() ?: ""
-                }
-            )
 
-            AsyncButton(
-                title = "checkVersion OzzieContract",
-                doAction = {
-                    passportUtility.checkVersion(
-                        "0x4d20968f609bf10e06495529590623d5d858c5c7",
-                        "OzzieContract"
-                    )
-                }
-            )
+//            AsyncButton(
+//                title = "nftCheck",
+//                doAction = {
+//                    PassportUtility.nftCheck(
+//                        "0x4d20968f609bf10e06495529590623d5d858c5c7",
+//                        userAddress
+//                    )?.toString() ?: ""
+//                }
+//            )
+
+//            AsyncButton(
+//                title = "checkVersion OzzieContract",
+//                doAction = {
+//                    PassportUtility.checkVersion(
+//                        "0x4d20968f609bf10e06495529590623d5d858c5c7",
+//                        "OzzieContract"
+//                    )
+//                }
+//            )
 
             AsyncButton(
                 title = "checkVersion LedgerContract",
                 doAction = {
-                    passportUtility.checkVersion(
-                        "0x61ff3d77ab2befece7b1c8e0764ac973ad85a9ef",
+                    PassportUtility.checkVersion(
+                        "0x0E53B4BFf707d9BE5582D9D2a4e6c00dc5Fca16F",
                         "LedgerContract"
                     )
                 }
@@ -152,18 +160,21 @@ fun MainContent(modifier: Modifier = Modifier) {
             AsyncButton(
                 title = "checkNFTOwnership",
                 doAction = {
-                    passportUtility.checkNFTOwnership(
+                    PassportUtility.checkNFTOwnership(
                         "0xfb28530d9d065ec81e826fa61baa51748c1ee775"
                     )?.toString() ?: ""
                 }
             )
 
+            SectionDivider()
+
             AsyncButton(
                 title = "addMembership",
                 doAction = {
-                    passportUtility.addMembership(
-                        "0xDf3c92e0FD7eCc8199a453C7D72C685E5578b1fb",
-                        userAddress
+                    PassportUtility.addMembership(
+                        "0x3d549e5078aa0b168e274493a640a718f5e16647",
+                        userAddress,
+                        "{\"tir\": \"gold\"}",
                     )
                     "Membership added"
                 }
@@ -172,8 +183,8 @@ fun MainContent(modifier: Modifier = Modifier) {
             AsyncButton(
                 title = "removeMembership",
                 doAction = {
-                    passportUtility.removeMembership(
-                        "0xDf3c92e0FD7eCc8199a453C7D72C685E5578b1fb",
+                    PassportUtility.removeMembership(
+                        "0x3d549e5078aa0b168e274493a640a718f5e16647",
                         userAddress
                     )
                     "Membership removed"
@@ -183,9 +194,8 @@ fun MainContent(modifier: Modifier = Modifier) {
             AsyncButton(
                 title = "confirmMembership",
                 doAction = {
-                    val hasMembership = passportUtility.confirmMembership(
-                        "0xDf3c92e0FD7eCc8199a453C7D72C685E5578b1fb",
-                        "0xa8c9d33bf5990ae10a685a5f4869ba5dcb176ae8",
+                    val hasMembership = PassportUtility.confirmMembership(
+                        "0x3d549e5078aa0b168e274493a640a718f5e16647",
                         userAddress
                     )
                     if (hasMembership) "Has membership" else "No membership"
@@ -195,19 +205,20 @@ fun MainContent(modifier: Modifier = Modifier) {
             AsyncButton(
                 title = "getMembershipMetadata",
                 doAction = {
-                    passportUtility.getMembershipMetadata(
-                        "0x3366F71c99A4684282BfE8af800194abeEF5F4C3",
-                        "0xa8c9d33bf5990ae10a685a5f4869ba5dcb176ae8",
+                    PassportUtility.getMembershipMetadata(
+                        "0x3d549e5078aa0b168e274493a640a718f5e16647",
                         userAddress
                     )
                 }
             )
 
+            SectionDivider()
+
             AsyncButton(
                 title = "loyaltyCheck",
                 doAction = {
-                    passportUtility.loyaltyCheck(
-                        "0xd7bf8920414268d891eb0451f4da79f98bebc9a2",
+                    PassportUtility.loyaltyCheck(
+                        "0x0E53B4BFf707d9BE5582D9D2a4e6c00dc5Fca16F",
                         userAddress
                     ).toString()
                 }
@@ -216,8 +227,8 @@ fun MainContent(modifier: Modifier = Modifier) {
             AsyncButton(
                 title = "loyaltyAdd",
                 doAction = {
-                    passportUtility.loyaltyAdd(
-                        "0xd7bf8920414268d891eb0451f4da79f98bebc9a2",
+                    PassportUtility.loyaltyAdd(
+                        "0x0E53B4BFf707d9BE5582D9D2a4e6c00dc5Fca16F",
                         userAddress,
                         123.toBigInteger(),
                         456.toBigInteger()
@@ -229,8 +240,8 @@ fun MainContent(modifier: Modifier = Modifier) {
             AsyncButton(
                 title = "convertPointsToCoins",
                 doAction = {
-                    passportUtility.convertPointsToCoins(
-                        "0xd7bf8920414268d891eb0451f4da79f98bebc9a2",
+                    PassportUtility.convertPointsToCoins(
+                        "0x0E53B4BFf707d9BE5582D9D2a4e6c00dc5Fca16F",
                         userAddress,
                         123.toBigInteger()
                     )
@@ -241,8 +252,8 @@ fun MainContent(modifier: Modifier = Modifier) {
             AsyncButton(
                 title = "loyaltyForfeit",
                 doAction = {
-                    passportUtility.loyaltyForfeit(
-                        "0xd7bf8920414268d891eb0451f4da79f98bebc9a2",
+                    PassportUtility.loyaltyForfeit(
+                        "0x0E53B4BFf707d9BE5582D9D2a4e6c00dc5Fca16F",
                         userAddress,
                         123.toBigInteger()
                     )
@@ -253,8 +264,8 @@ fun MainContent(modifier: Modifier = Modifier) {
             AsyncButton(
                 title = "loyaltyRedeem",
                 doAction = {
-                    passportUtility.loyaltyRedeem(
-                        "0xd7bf8920414268d891eb0451f4da79f98bebc9a2",
+                    PassportUtility.loyaltyRedeem(
+                        "0x0E53B4BFf707d9BE5582D9D2a4e6c00dc5Fca16F",
                         userAddress,
                         123.toBigInteger(),
                         456.toBigInteger()
@@ -266,43 +277,47 @@ fun MainContent(modifier: Modifier = Modifier) {
             AsyncButton(
                 title = "loyaltyLifetimeCheck",
                 doAction = {
-                    passportUtility.loyaltyLifetimeCheck(
-                        "0xd7bf8920414268d891eb0451f4da79f98bebc9a2",
+                    PassportUtility.loyaltyLifetimeCheck(
+                        "0x0E53B4BFf707d9BE5582D9D2a4e6c00dc5Fca16F",
                         userAddress
                     ).toString()
                 }
             )
+
+            SectionDivider()
 
             AsyncButton(
                 title = "svCheck",
                 doAction = {
-                    passportUtility.svCheck(
-                        "0x893fBedDaDfdfb836CC069902F7270eA56fD6ebF",
+                    PassportUtility.svCheck(
+                        "0x2c88F13a02e2798D214A88A8Be3c7fb82aCeA3a7",
                         userAddress
                     ).toString()
                 }
             )
 
-            AsyncButton(
-                title = "getContractABI OzzieContract",
-                doAction = {
-                    passportUtility.getContractABI(
-                        "OzzieContract"
-                    )
-                }
-            )
+//            AsyncButton(
+//                title = "getContractABI OzzieContract",
+//                doAction = {
+//                    PassportUtility.getContractABI(
+//                        "OzzieContract"
+//                    )
+//                }
+//            )
 
             AsyncButton(
                 title = "authN",
                 doAction = {
-                    passportUtility.authN()
+                    PassportUtility.authN()
                     ""
                 }
             )
         }
 
+        SectionDivider()
+
         Button(onClick = {
-            passportUtility.readNFC(context as Activity)
+            PassportUtility.readNFC(context as Activity)
         }) {
             Text(text = "readNFC")
         }
@@ -310,7 +325,7 @@ fun MainContent(modifier: Modifier = Modifier) {
         AsyncButton(
             title = "scanQRCode",
             doAction = {
-                passportUtility.scanQRCode(context) ?: ""
+                PassportUtility.scanQRCode(context) ?: ""
             }
         )
     }
@@ -320,7 +335,7 @@ fun MainContent(modifier: Modifier = Modifier) {
 fun AsyncButton(
     title: String,
     doAction: suspend () -> String,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
 ) {
     var isInProgress by remember { mutableStateOf(false) }
 
@@ -367,11 +382,16 @@ private fun showShortToast(context: Context, message: String) {
     }
 }
 
+@Composable
+fun SectionDivider(modifier: Modifier = Modifier) {
+    Divider(modifier = modifier.padding(vertical = 12.dp))
+}
+
 @Preview(showBackground = true)
 @Composable
 fun GreetingPreview() {
     CredenzaPassportExampleTheme {
-        MainContent()
+//        MainContent()
     }
 }
 

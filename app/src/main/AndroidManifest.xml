@@ -26,6 +26,18 @@
             android:name="com.credenza3.credenzapassport.KRYPTKEY"
             android:value="" />
 
+        <meta-data
+            android:name="com.credenza3.credenzapassport.OAUTH_CLIENT_ID"
+            android:value="" />
+
+        <meta-data
+            android:name="com.credenza3.credenzapassport.OAUTH_CLIENT_SECRET"
+            android:value="" />
+
+        <meta-data
+            android:name="com.credenza3.credenzapassport.OAUTH_REDIRECT_URL"
+            android:value="" />
+
         <activity
             android:name=".MainActivity"
             android:exported="true"
@@ -55,6 +67,26 @@
                 <action android:name="android.nfc.action.TAG_DISCOVERED" />
             </intent-filter>
 
+        </activity>
+
+        <activity
+            android:name="com.credenza3.credenzapassport.auth.AuthActivity"
+            android:exported="true"
+            android:label="string/title_activity_auth"
+            android:theme="@android:style/Theme.Material.Light.NoActionBar"
+            android:screenOrientation="portrait">
+
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+
+                <data
+                    android:host="android_prod.credenza3.com"
+                    android:path="/auth"
+                    android:scheme="credenzaauth" />
+            </intent-filter>
         </activity>
     </application>
 

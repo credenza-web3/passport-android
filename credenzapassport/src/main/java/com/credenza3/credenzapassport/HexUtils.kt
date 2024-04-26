@@ -1,8 +1,13 @@
 package com.credenza3.credenzapassport
 
+import android.util.Base64
+import java.security.MessageDigest
 
-private val HEX_CHARS = "0123456789ABCDEF"
+
+private const val HEX_CHARS = "0123456789ABCDEF"
 private val HEX_CHARS_ARRAY = "0123456789ABCDEF".toCharArray()
+
+private const val ALGORITHM_SHA_256 = "SHA-256"
 
 fun ByteArray.toHex(): String {
     val result = StringBuffer()
@@ -32,3 +37,16 @@ fun String.hexToByteArray(): ByteArray {
 
     return result
 }
+
+fun String.hashSha256(): ByteArray {
+    val codeVerifierBytes = toByteArray(charset("US-ASCII"))
+    val md = MessageDigest.getInstance("SHA-256")
+    md.update(codeVerifierBytes)
+    return md.digest()
+}
+
+fun ByteArray.base64URLEncode(): String =
+    Base64.encodeToString(
+        this,
+        Base64.URL_SAFE or Base64.NO_WRAP or Base64.NO_PADDING
+    )

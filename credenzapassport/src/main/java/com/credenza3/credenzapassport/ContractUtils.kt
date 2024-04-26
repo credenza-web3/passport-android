@@ -1,12 +1,11 @@
 package com.credenza3.credenzapassport
 
 import com.credenza3.credenzapassport.contracts.ConnectedPackagingContract
-import com.credenza3.credenzapassport.contracts.ERC20TestContract
+import com.credenza3.credenzapassport.contracts.CredenzaToken
 import com.credenza3.credenzapassport.contracts.LedgerContract
-import com.credenza3.credenzapassport.contracts.MembershipContract
-import com.credenza3.credenzapassport.contracts.MetadataMembershipContract
 import com.credenza3.credenzapassport.contracts.NFTOwnership
 import com.credenza3.credenzapassport.contracts.OzzieContract
+import com.credenza3.credenzapassport.contracts.SellableMetadataMembershipContract
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.runBlocking
 import link.magic.android.modules.web3j.contract.MagicTxnManager
@@ -38,12 +37,11 @@ class ContractUtils(
 
         private val CONTRACT_CLASSES = mapOf(
             "OzzieContract" to OzzieContract::class.java,
-            "MembershipContract" to MembershipContract::class.java,
-            "MetadataMembershipContract" to MetadataMembershipContract::class.java,
             "LedgerContract" to LedgerContract::class.java,
-            "ERC20TestContract" to ERC20TestContract::class.java,
+            "CredenzaToken" to CredenzaToken::class.java,
             "ConnectedPackagingContract" to ConnectedPackagingContract::class.java,
             "NFTOwnership" to NFTOwnership::class.java,
+            "SellableMetadataMembershipContract" to SellableMetadataMembershipContract::class.java,
         )
     }
 
@@ -163,20 +161,6 @@ class ContractUtils(
                 gasProvider
             ) as T
 
-            MembershipContract::class.java -> MembershipContract.load(
-                contractAddress,
-                web3j,
-                transactionManager,
-                gasProvider
-            ) as T
-
-            MetadataMembershipContract::class.java -> MetadataMembershipContract.load(
-                contractAddress,
-                web3j,
-                transactionManager,
-                gasProvider
-            ) as T
-
             LedgerContract::class.java -> LedgerContract.load(
                 contractAddress,
                 web3j,
@@ -184,7 +168,7 @@ class ContractUtils(
                 gasProvider
             ) as T
 
-            ERC20TestContract::class.java -> ERC20TestContract.load(
+            CredenzaToken::class.java -> CredenzaToken.load(
                 contractAddress,
                 web3j,
                 transactionManager,
@@ -199,6 +183,13 @@ class ContractUtils(
             ) as T
 
             NFTOwnership::class.java -> NFTOwnership.load(
+                contractAddress,
+                web3j,
+                transactionManager,
+                gasProvider
+            ) as T
+
+            SellableMetadataMembershipContract::class.java -> SellableMetadataMembershipContract.load(
                 contractAddress,
                 web3j,
                 transactionManager,

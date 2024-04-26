@@ -20,3 +20,11 @@ fun DataStore<Preferences>.getDataStoreString(
 ): String? = runBlocking {
     data.firstOrNull()?.get(key)
 }
+
+fun DataStore<Preferences>.clearDataStoreValue(
+    key: Preferences.Key<String>,
+) = runBlocking {
+    edit {
+        it.remove(key)
+    }
+}

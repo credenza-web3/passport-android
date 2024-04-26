@@ -2,7 +2,6 @@ package com.credenza3.credenzapassport
 
 import android.app.Activity
 import android.content.Context
-import android.content.pm.PackageManager
 import android.nfc.NdefMessage
 import android.nfc.NfcAdapter
 import android.nfc.NfcAdapter.FLAG_READER_NFC_A
@@ -11,29 +10,28 @@ import android.nfc.tech.IsoDep
 import android.nfc.tech.MifareClassic
 import android.nfc.tech.Ndef
 import android.nfc.tech.NfcV
-import android.os.Build
 import android.os.Bundle
 import android.util.Log
 import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.preferencesDataStore
+import com.credenza3.credenzapassport.auth.AuthClient
+import com.credenza3.credenzapassport.auth.api.EVMAPIService
+import com.credenza3.credenzapassport.auth.api.EVMApiProvider
+import com.credenza3.credenzapassport.auth.api.model.SignatureRequest
 import com.credenza3.credenzapassport.contracts.ConnectedPackagingContract
-import com.credenza3.credenzapassport.contracts.ERC20TestContract
+import com.credenza3.credenzapassport.contracts.CredenzaToken
 import com.credenza3.credenzapassport.contracts.LedgerContract
-import com.credenza3.credenzapassport.contracts.MembershipContract
-import com.credenza3.credenzapassport.contracts.MetadataMembershipContract
 import com.credenza3.credenzapassport.contracts.NFTOwnership
 import com.credenza3.credenzapassport.contracts.OzzieContract
+import com.credenza3.credenzapassport.contracts.SellableMetadataMembershipContract
 import com.google.mlkit.vision.codescanner.GmsBarcodeScanning
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.runBlocking
-import link.magic.android.Magic
-import link.magic.android.modules.auth.requestConfiguration.LoginWithEmailOTPConfiguration
-import link.magic.android.modules.auth.response.DIDToken
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import org.web3j.protocol.Web3j
-import org.web3j.protocol.core.methods.response.EthAccounts
+import org.web3j.protocol.http.HttpService
 import java.io.IOException
 import java.math.BigInteger
 import kotlin.coroutines.resume
@@ -42,6 +40,9 @@ import kotlin.coroutines.suspendCoroutine
 
 private val Context.dataStore: DataStore<Preferences> by preferencesDataStore(name = "passport")
 private const val KEY_KRYPTKEY = "com.credenza3.credenzapassport.KRYPTKEY"
+private const val KEY_OAUTH_CLIENT_ID = "com.credenza3.credenzapassport.OAUTH_CLIENT_ID"
+private const val KEY_OAUTH_CLIENT_SECRET = "com.credenza3.credenzapassport.OAUTH_CLIENT_SECRET"
+const val KEY_OAUTH_REDIRECT_URL = "com.credenza3.credenzapassport.OAUTH_REDIRECT_URL"
 private const val TAG = "PassportUtility"
 
 interface PassportListener {
@@ -49,12 +50,7 @@ interface PassportListener {
     fun onNFCScanComplete(address: String)
 }
 
-class PassportUtility(
-    context: Context,
-    val magic: Magic,
-    chainId: Long,
-    private val passportListener: PassportListener
-) {
+object PassportUtility {
 
     // The authentication token to be used for API calls.
     private var authenticationTokenC = ""
@@ -68,33 +64,46 @@ class PassportUtility(
     // The address of the connected smart contract.
     private var connectedContractAddressC = ""
 
-    private val web3j = Web3j.build(magic.rpcProvider)
+
+    internal lateinit var authClient: AuthClient
+    private lateinit var web3j: Web3j
     private val okHttpClient = OkHttpClient()
-    private val passportDataStore: PassportDataStore = PassportDataStore(context.dataStore)
-    private val contractUtils: ContractUtils = ContractUtils(okHttpClient, web3j, chainId, passportDataStore)
+    private lateinit var evmAPIService: EVMAPIService
+    private lateinit var passportDataStore: PassportDataStore
+    private lateinit var contractUtils: ContractUtils
 
     private var nfcAdapter: NfcAdapter? = null
 
-    init {
+    lateinit var passportListener: PassportListener
+
+    fun init(
+        context: Context,
+        chainId: Long,
+        passportListener: PassportListener,
+    ) {
+
+        this.passportListener = passportListener
+        passportDataStore = PassportDataStore(context.dataStore)
+
+        web3j =
+            Web3j.build(HttpService("https://rpc-amoy.polygon.technology")) //TODO remove hardcode
+        contractUtils = ContractUtils(okHttpClient, web3j, chainId, passportDataStore)
+
+        authClient = AuthClient(
+            clientId = context.getMetaDataOrThrowException(KEY_OAUTH_CLIENT_ID),
+            clientSecret = context.getMetaDataOrThrowException(KEY_OAUTH_CLIENT_ID),
+            redirectURL = context.getMetaDataOrThrowException(KEY_OAUTH_REDIRECT_URL),
+            passportDataStore = passportDataStore,
+        )
+
         getAdminAccount(context)?.let { adminAccount ->
             passportDataStore.saveAdminAccount(adminAccount)
         }
+
+        evmAPIService = EVMApiProvider(authClient).evmAPIService
     }
 
-    private fun getAdminAccount(context: Context): String? {
-        val applicationInfo = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            context.packageManager.getApplicationInfo(
-                context.packageName,
-                PackageManager.ApplicationInfoFlags.of(PackageManager.GET_META_DATA.toLong())
-            )
-        } else {
-            context.packageManager.getApplicationInfo(
-                context.packageName,
-                PackageManager.GET_META_DATA
-            )
-        }
-        return applicationInfo.metaData.getString(KEY_KRYPTKEY)
-    }
+    private fun getAdminAccount(context: Context): String? = context.getMetaData(KEY_KRYPTKEY)
 
     suspend fun scanQRCode(context: Context): String? = suspendCoroutine { continuation ->
         GmsBarcodeScanning.getClient(context)
@@ -123,7 +132,7 @@ class PassportUtility(
         authenticationToken: String,
         nftContractAddress: String,
         storedValueContractAddress: String,
-        connectedContractAddress: String
+        connectedContractAddress: String,
     ) {
         authenticationTokenC = authenticationToken
         nftContractAddressC = nftContractAddress
@@ -137,7 +146,7 @@ class PassportUtility(
      * @return An asynchronous task that returns the version number as a String.
      */
     suspend fun getVersion() =
-        checkVersion("0x61ff3d77ab2befece7b1c8e0764ac973ad85a9ef", "LedgerContract")
+        checkVersion("0x0E53B4BFf707d9BE5582D9D2a4e6c00dc5Fca16F", "LedgerContract")
 
     /**
      * Performs a GET request using the provided authentication token.
@@ -155,66 +164,43 @@ class PassportUtility(
     }
 
     /**
-     * Handles sign-in for a given email address using Magic.link SDK.
+     * Handles sign-in for a given email address.
      * Note: Stores the login token in DataStore after successful authentication.
      *
      * @param context Context
-     * @param emailAddress: An email address for which to perform sign-in.
      */
-    fun handleSignIn(context: Context, emailAddress: String) {
+    suspend fun handleSignIn(activity: Activity) {
 
-        val configuration = LoginWithEmailOTPConfiguration(emailAddress)
-        magic.auth
-            .loginWithEmailOTP(context, configuration)
-            .whenComplete { token: DIDToken?, error: Throwable? ->
+        val isAuthorized = authClient.signIn(activity)
 
-                error?.let {
-                    Log.e(TAG, "Failed to login", error)
-                    return@whenComplete
-                }
-
-                token?.let {
-                    if (token.hasError()) {
-                        Log.e(TAG, "Failed to login ${token.error}")
-                        return@whenComplete
-                    }
-
-                    passportDataStore.saveToken(token.result)
-                    getAccount()
-                }
-            }
+        if (isAuthorized) {
+            getAccount()
+        } else {
+            Log.e(TAG, "Failed to login")
+        }
     }
 
     /**
-     * Gets the user's Ethereum public address using the Magic.link SDK and passes it to the `listener` instance.
+     * Gets the user's Ethereum public address and passes it to the `listener` instance.
      * Note: Calls `loginComplete(address:)` of the `listener` instance to pass the Ethereum public address to it.
      */
-    fun getAccount() {
-        web3j.ethAccounts()
-            .sendAsync()
-            .whenComplete { accResponse: EthAccounts?, error: Throwable? ->
-                error?.let {
-                    Log.e(TAG, "Failed to get accounts", error)
-                    return@whenComplete
-                }
+    suspend fun getAccount() {
+        evmAPIService.getAccountAddress().body()?.address?.let { account ->
 
-                accResponse?.let {
-                    if (accResponse.hasError()) {
-                        Log.e(TAG, "Failed to login ${accResponse.error}")
-                        return@whenComplete
-                    }
+            passportDataStore.saveUserAccount(account)
+            passportListener.onLoginComplete(account)
 
-                    accResponse.result?.firstOrNull()?.let { account ->
-
-                        passportDataStore.saveUserAccount(account)
-                        passportListener.onLoginComplete(account)
-
-                    } ?: run {
-                        Log.e(TAG, "No Account Found")
-                    }
-                }
-            }
+        } ?: run {
+            Log.e(TAG, "No Account Found")
+        }
     }
+
+    fun getCurrentAccount(): String? = passportDataStore.getUserAccount()
+
+    fun isUserLoggedIn(): Boolean = authClient.isAuthorized()
+
+    fun logout() = authClient.logout()
+
 
     /**
      * Checks the balance of NFT (Non-Fungible Token) of a user for a given contract address.
@@ -225,7 +211,7 @@ class PassportUtility(
      */
     suspend fun nftCheck(
         contractAddress: String,
-        userAddress: String
+        userAddress: String,
     ): BigInteger? =
         suspendCoroutine { continuation ->
 
@@ -257,7 +243,7 @@ class PassportUtility(
      * @param address: The Ethereum address for which to check the NFT ownership.
      */
     suspend fun checkNFTOwnership(
-        address: String
+        address: String,
     ): BigInteger? =
         suspendCoroutine { continuation ->
 
@@ -297,7 +283,7 @@ class PassportUtility(
      */
     suspend fun checkVersion(
         contractAddress: String,
-        contractType: String
+        contractType: String,
     ): String =
         suspendCoroutine { continuation ->
 
@@ -305,10 +291,10 @@ class PassportUtility(
 
             val versionRequest = when (contract) {
                 is OzzieContract -> contract.version
-                is MembershipContract -> contract.version
                 is LedgerContract -> contract.version
-                is ERC20TestContract -> contract.version
+                is CredenzaToken -> contract.version
                 is ConnectedPackagingContract -> contract.version
+                is SellableMetadataMembershipContract -> contract.version
                 else -> throw IllegalArgumentException("Contract of type $contractType is not supported")
             }
 
@@ -341,16 +327,17 @@ class PassportUtility(
      */
     suspend fun addMembership(
         contractAddress: String,
-        userAddress: String
+        userAddress: String,
+        metadata: String,
     ) = suspendCoroutine { continuation ->
 
         val contract =
             contractUtils.getContractAsAdmin(
-                MembershipContract::class.java,
+                SellableMetadataMembershipContract::class.java,
                 contractAddress
             )
 
-        contract.addMembership(userAddress)
+        contract.addMembership(userAddress, metadata)
             .sendAsync()
             .whenComplete { _, throwable ->
                 throwable?.let {
@@ -375,12 +362,12 @@ class PassportUtility(
      */
     suspend fun removeMembership(
         contractAddress: String,
-        userAddress: String
+        userAddress: String,
     ) = suspendCoroutine { continuation ->
 
         val contract =
             contractUtils.getContractAsAdmin(
-                MembershipContract::class.java,
+                SellableMetadataMembershipContract::class.java,
                 contractAddress
             )
 
@@ -411,14 +398,13 @@ class PassportUtility(
      */
     suspend fun confirmMembership(
         contractAddress: String,
-        ownerAddress: String,
-        userAddress: String
+        userAddress: String,
     ): Boolean = suspendCoroutine { continuation ->
 
         val contract =
-            contractUtils.getContractAsUser(MembershipContract::class.java, contractAddress)
+            contractUtils.getContractAsUser(SellableMetadataMembershipContract::class.java, contractAddress)
 
-        contract.confirmMembership(ownerAddress, userAddress)
+        contract.confirmMembership(userAddress)
             .sendAsync()
             .whenComplete { result, throwable ->
                 throwable?.let {
@@ -447,14 +433,13 @@ class PassportUtility(
      */
     suspend fun getMembershipMetadata(
         contractAddress: String,
-        ownerAddress: String,
-        userAddress: String
+        userAddress: String,
     ): String = suspendCoroutine { continuation ->
 
         val contract =
-            contractUtils.getContractAsUser(MetadataMembershipContract::class.java, contractAddress)
+            contractUtils.getContractAsUser(SellableMetadataMembershipContract::class.java, contractAddress)
 
-        contract.getMembershipMetadata(ownerAddress, userAddress)
+        contract.getMembershipMetadata(userAddress)
             .sendAsync()
             .whenComplete { result, throwable ->
                 throwable?.let {
@@ -481,7 +466,7 @@ class PassportUtility(
      */
     suspend fun loyaltyCheck(
         contractAddress: String,
-        userAddress: String
+        userAddress: String,
     ): BigInteger = suspendCoroutine { continuation ->
 
         val contract =
@@ -516,7 +501,7 @@ class PassportUtility(
         contractAddress: String,
         userAddress: String,
         points: BigInteger,
-        eventId: BigInteger
+        eventId: BigInteger,
     ) = suspendCoroutine { continuation ->
 
         val contract =
@@ -550,7 +535,7 @@ class PassportUtility(
     suspend fun convertPointsToCoins(
         contractAddress: String,
         userAddress: String,
-        points: BigInteger
+        points: BigInteger,
     ) = suspendCoroutine { continuation ->
 
         val contract =
@@ -584,7 +569,7 @@ class PassportUtility(
     suspend fun loyaltyForfeit(
         contractAddress: String,
         userAddress: String,
-        points: BigInteger
+        points: BigInteger,
     ) = suspendCoroutine { continuation ->
 
         val contract =
@@ -621,7 +606,7 @@ class PassportUtility(
         contractAddress: String,
         userAddress: String,
         points: BigInteger,
-        eventId: BigInteger
+        eventId: BigInteger,
     ) = suspendCoroutine { continuation ->
 
         val contract =
@@ -655,7 +640,7 @@ class PassportUtility(
      */
     suspend fun loyaltyLifetimeCheck(
         contractAddress: String,
-        userAddress: String
+        userAddress: String,
     ): BigInteger = suspendCoroutine { continuation ->
 
         val contract =
@@ -687,11 +672,11 @@ class PassportUtility(
      */
     suspend fun svCheck(
         contractAddress: String,
-        userAddress: String
+        userAddress: String,
     ): BigInteger = suspendCoroutine { continuation ->
 
         val contract =
-            contractUtils.getContractAsUser(ERC20TestContract::class.java, contractAddress)
+            contractUtils.getContractAsUser(CredenzaToken::class.java, contractAddress)
 
         contract.balanceOf(userAddress)
             .sendAsync()
@@ -717,7 +702,7 @@ class PassportUtility(
      * @return The Ethereum address of the connected packaging.
      */
     suspend fun connectedPackageQuery(
-        serialNumber: String
+        serialNumber: String,
     ): String = suspendCoroutine { continuation ->
 
         val contract =
@@ -751,7 +736,7 @@ class PassportUtility(
      */
     suspend fun connectedPackagePublish(
         userAddress: String,
-        serialNumber: String
+        serialNumber: String,
     ) = suspendCoroutine { continuation ->
 
         val contract =
@@ -783,7 +768,7 @@ class PassportUtility(
      * @param serialNumber: The serial number of the connected packaging.
      */
     suspend fun connectedPackagePurge(
-        serialNumber: String
+        serialNumber: String,
     ) = suspendCoroutine { continuation ->
 
         val contract =
@@ -818,7 +803,7 @@ class PassportUtility(
      */
     @Throws(IOException::class)
     suspend fun getContractABI(
-        contractName: String
+        contractName: String,
     ): String = contractUtils.getContractABI(contractName)
 
     /**
@@ -848,7 +833,7 @@ class PassportUtility(
             }
             return@runBlocking ""
         }
-        passportListener.onNFCScanComplete(serialID)
+        passportListener?.onNFCScanComplete(serialID)
         nfcAdapter?.disableReaderMode(activity)
     }
 
