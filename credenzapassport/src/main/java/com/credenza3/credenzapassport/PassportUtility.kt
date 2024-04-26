@@ -18,7 +18,6 @@ import androidx.datastore.preferences.preferencesDataStore
 import com.credenza3.credenzapassport.auth.AuthClient
 import com.credenza3.credenzapassport.auth.api.EVMAPIService
 import com.credenza3.credenzapassport.auth.api.EVMApiProvider
-import com.credenza3.credenzapassport.auth.api.model.SignatureRequest
 import com.credenza3.credenzapassport.contracts.ConnectedPackagingContract
 import com.credenza3.credenzapassport.contracts.CredenzaToken
 import com.credenza3.credenzapassport.contracts.LedgerContract
