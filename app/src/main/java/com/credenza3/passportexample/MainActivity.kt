@@ -151,7 +151,7 @@ fun MainContent(
                 title = "checkVersion LedgerContract",
                 doAction = {
                     PassportUtility.checkVersion(
-                        "0x0E53B4BFf707d9BE5582D9D2a4e6c00dc5Fca16F",
+                        "0x90cfe13ccf7f714cff8caa941b3b6c188089b8ee",
                         "LedgerContract"
                     )
                 }
@@ -218,7 +218,7 @@ fun MainContent(
                 title = "loyaltyCheck",
                 doAction = {
                     PassportUtility.loyaltyCheck(
-                        "0x0E53B4BFf707d9BE5582D9D2a4e6c00dc5Fca16F",
+                        "0x90cfe13ccf7f714cff8caa941b3b6c188089b8ee",
                         userAddress
                     ).toString()
                 }
@@ -228,7 +228,7 @@ fun MainContent(
                 title = "loyaltyAdd",
                 doAction = {
                     PassportUtility.loyaltyAdd(
-                        "0x0E53B4BFf707d9BE5582D9D2a4e6c00dc5Fca16F",
+                        "0x90cfe13ccf7f714cff8caa941b3b6c188089b8ee",
                         userAddress,
                         123.toBigInteger(),
                         456.toBigInteger()
@@ -241,7 +241,7 @@ fun MainContent(
                 title = "convertPointsToCoins",
                 doAction = {
                     PassportUtility.convertPointsToCoins(
-                        "0x0E53B4BFf707d9BE5582D9D2a4e6c00dc5Fca16F",
+                        "0x90cfe13ccf7f714cff8caa941b3b6c188089b8ee",
                         userAddress,
                         123.toBigInteger()
                     )
@@ -253,7 +253,7 @@ fun MainContent(
                 title = "loyaltyForfeit",
                 doAction = {
                     PassportUtility.loyaltyForfeit(
-                        "0x0E53B4BFf707d9BE5582D9D2a4e6c00dc5Fca16F",
+                        "0x90cfe13ccf7f714cff8caa941b3b6c188089b8ee",
                         userAddress,
                         123.toBigInteger()
                     )
@@ -265,7 +265,7 @@ fun MainContent(
                 title = "loyaltyRedeem",
                 doAction = {
                     PassportUtility.loyaltyRedeem(
-                        "0x0E53B4BFf707d9BE5582D9D2a4e6c00dc5Fca16F",
+                        "0x90cfe13ccf7f714cff8caa941b3b6c188089b8ee",
                         userAddress,
                         123.toBigInteger(),
                         456.toBigInteger()
@@ -278,7 +278,7 @@ fun MainContent(
                 title = "loyaltyLifetimeCheck",
                 doAction = {
                     PassportUtility.loyaltyLifetimeCheck(
-                        "0x0E53B4BFf707d9BE5582D9D2a4e6c00dc5Fca16F",
+                        "0x90cfe13ccf7f714cff8caa941b3b6c188089b8ee",
                         userAddress
                     ).toString()
                 }
