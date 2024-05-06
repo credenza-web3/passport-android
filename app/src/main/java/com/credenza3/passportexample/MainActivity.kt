@@ -35,6 +35,9 @@ import androidx.lifecycle.lifecycleScope
 import com.credenza3.credenzapassport.PassportListener
 import com.credenza3.credenzapassport.PassportUtility
 import com.credenza3.passportexample.ui.theme.CredenzaPassportExampleTheme
+import com.google.firebase.crashlytics.FirebaseCrashlytics
+import com.google.firebase.crashlytics.ktx.crashlytics
+import com.google.firebase.ktx.Firebase
 import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -42,7 +45,10 @@ import kotlinx.coroutines.launch
 
 private const val TAG = "MainActivity"
 
+private val firebaseCrashlytics: FirebaseCrashlytics = Firebase.crashlytics
+
 class MainActivity : ComponentActivity() {
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContent {
@@ -317,7 +323,13 @@ fun MainContent(
         SectionDivider()
 
         Button(onClick = {
-            PassportUtility.readNFC(context as Activity)
+            try {
+                PassportUtility.readNFC(context as Activity)
+            } catch (t: Throwable) {
+                Log.e("MainActivity", "Failed to read NFC", t)
+                firebaseCrashlytics.recordException(t)
+                showShortToast(context, "Error: ${t.message ?: "Unknown"}")
+            }
         }) {
             Text(text = "readNFC")
         }

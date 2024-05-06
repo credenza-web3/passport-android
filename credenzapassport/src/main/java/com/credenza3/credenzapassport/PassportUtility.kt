@@ -809,10 +809,10 @@ object PassportUtility {
      * Initiates a new NFC adapter session for reading from the passport-enabled tag.
      */
     fun readNFC(activity: Activity) {
-        val nfcAdapter = NfcAdapter.getDefaultAdapter(activity)
+        nfcAdapter = NfcAdapter.getDefaultAdapter(activity)
             ?: throw UnsupportedOperationException("Nfc is not supported for current device")
 
-        nfcAdapter.enableReaderMode(
+        nfcAdapter?.enableReaderMode(
             activity,
             { onTagDiscovered(activity, it) },
             FLAG_READER_NFC_A,
@@ -832,7 +832,7 @@ object PassportUtility {
             }
             return@runBlocking ""
         }
-        passportListener?.onNFCScanComplete(serialID)
+        passportListener.onNFCScanComplete(serialID)
         nfcAdapter?.disableReaderMode(activity)
     }
 

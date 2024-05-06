@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "65894304016",
+    "project_id": "credenza-e1e69",
+    "storage_bucket": "credenza-e1e69.appspot.com"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:65894304016:android:ec3a5c93f0b8c2fbed7d95",
+        "android_client_info": {
+          "package_name": "com.credenza3.passportexample"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAF57vI0bQbuSOtNu8nq6ZB6gBJ_NFXUaA"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
