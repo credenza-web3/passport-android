@@ -1,4 +1,4 @@
-package com.credenza3.credenzapassport.auth.api
+package com.credenza3.credenzapassport.api
 
 import com.credenza3.credenzapassport.auth.AuthClient
 import com.google.gson.GsonBuilder
@@ -44,40 +44,59 @@ internal class EVMApiProvider(
             .baseUrl(BASE_EVM_URL)
             .client(
                 OkHttpClient.Builder()
-                    .addInterceptor(getAuthInterceptor())
+                    .addInterceptor(getAuthInterceptor(authClient))
                     .build()
             )
             .addConverterFactory(gsonConverterFactory)
             .build()
             .create(EVMAPIService::class.java)
     }
-
-
-    private fun getAuthInterceptor(): Interceptor =
-        Interceptor { chain ->
-            val request = chain.request()
-            val requestBuilder = request.newBuilder()
-
-            authClient.getAccessToken()?.let { accessToken ->
-                requestBuilder.addHeader(
-                    HEADER_AUTHORIZATION,
-                    HEADER_PREFIX_BEARER + accessToken
-                )
-            }
-
-            val response = chain.proceed(requestBuilder.build())
-
-            if (response.code == HTTP_STATUS_CODE_UNAUTHORIZED
-                && authClient.isAuthorized()
-            ) {
-                val isRefreshSuccess = runBlocking {
-                    authClient.refreshToken()
-                }
-                if (isRefreshSuccess) {
-                    response.close()
-                    return@Interceptor chain.proceed(requestBuilder.build())
-                }
-            }
-            return@Interceptor response
-        }
 }
+
+internal class DiscountApiProvider(
+    private val authClient: AuthClient,
+    private val baseURL: String,
+) {
+
+    val discountAPIService: DiscountsAPIService by lazy {
+        Retrofit.Builder()
+            .baseUrl(baseURL)
+            .client(
+                OkHttpClient.Builder()
+                    .addInterceptor(getAuthInterceptor(authClient))
+                    .build()
+            )
+            .addConverterFactory(gsonConverterFactory)
+            .build()
+            .create(DiscountsAPIService::class.java)
+    }
+}
+
+
+private fun getAuthInterceptor(authClient: AuthClient): Interceptor =
+    Interceptor { chain ->
+        val request = chain.request()
+        val requestBuilder = request.newBuilder()
+
+        authClient.getAccessToken()?.let { accessToken ->
+            requestBuilder.addHeader(
+                HEADER_AUTHORIZATION,
+                HEADER_PREFIX_BEARER + accessToken
+            )
+        }
+
+        val response = chain.proceed(requestBuilder.build())
+
+        if (response.code == HTTP_STATUS_CODE_UNAUTHORIZED
+            && authClient.isAuthorized()
+        ) {
+            val isRefreshSuccess = runBlocking {
+                authClient.refreshToken()
+            }
+            if (isRefreshSuccess) {
+                response.close()
+                return@Interceptor chain.proceed(requestBuilder.build())
+            }
+        }
+        return@Interceptor response
+    }

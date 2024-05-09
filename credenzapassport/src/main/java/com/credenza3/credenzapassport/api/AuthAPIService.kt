@@ -1,6 +1,6 @@
-package com.credenza3.credenzapassport.auth.api
+package com.credenza3.credenzapassport.api
 
-import com.credenza3.credenzapassport.auth.api.model.TokenResponse
+import com.credenza3.credenzapassport.api.model.TokenResponse
 import retrofit2.Response
 import retrofit2.http.Field
 import retrofit2.http.FormUrlEncoded

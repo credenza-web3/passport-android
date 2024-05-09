@@ -1,6 +1,8 @@
 package com.credenza3.credenzapassport
 
 import android.util.Base64
+import org.web3j.crypto.Sign
+import org.web3j.utils.Numeric
 import java.security.MessageDigest
 
 
@@ -50,3 +52,12 @@ fun ByteArray.base64URLEncode(): String =
         this,
         Base64.URL_SAFE or Base64.NO_WRAP or Base64.NO_PADDING
     )
+
+fun Sign.SignatureData.toHexString(): String {
+    val value = ByteArray(65)
+    System.arraycopy(r, 0, value, 0, 32)
+    System.arraycopy(s, 0, value, 32, 32)
+    System.arraycopy(v, 0, value, 64, 1)
+
+    return Numeric.toHexString(value)
+}

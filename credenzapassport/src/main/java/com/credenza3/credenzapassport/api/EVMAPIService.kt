@@ -1,6 +1,6 @@
-package com.credenza3.credenzapassport.auth.api
+package com.credenza3.credenzapassport.api
 
-import com.credenza3.credenzapassport.auth.api.model.AccountAddressResponse
+import com.credenza3.credenzapassport.api.model.AccountAddressResponse
 import retrofit2.Response
 import retrofit2.http.GET
 

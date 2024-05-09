@@ -38,6 +38,10 @@
             android:name="com.credenza3.credenzapassport.OAUTH_REDIRECT_URL"
             android:value="" />
 
+        <meta-data
+            android:name="com.credenza3.credenzapassport.PASS_CODE_BASE_URL"
+            android:value="" />
+
         <activity
             android:name=".MainActivity"
             android:exported="true"

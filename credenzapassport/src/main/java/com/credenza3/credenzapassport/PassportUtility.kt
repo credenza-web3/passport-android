@@ -2,6 +2,8 @@ package com.credenza3.credenzapassport
 
 import android.app.Activity
 import android.content.Context
+import android.graphics.Bitmap
+import android.graphics.Color
 import android.nfc.NdefMessage
 import android.nfc.NfcAdapter
 import android.nfc.NfcAdapter.FLAG_READER_NFC_A
@@ -15,24 +17,36 @@ import android.util.Log
 import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.preferencesDataStore
+import com.credenza3.credenzapassport.api.DiscountApiProvider
+import com.credenza3.credenzapassport.api.DiscountsAPIService
+import com.credenza3.credenzapassport.api.EVMAPIService
+import com.credenza3.credenzapassport.api.EVMApiProvider
+import com.credenza3.credenzapassport.api.model.ValidateRulesetRequest
+import com.credenza3.credenzapassport.api.model.ValidateRulesetResponse
 import com.credenza3.credenzapassport.auth.AuthClient
-import com.credenza3.credenzapassport.auth.api.EVMAPIService
-import com.credenza3.credenzapassport.auth.api.EVMApiProvider
 import com.credenza3.credenzapassport.contracts.ConnectedPackagingContract
 import com.credenza3.credenzapassport.contracts.CredenzaToken
 import com.credenza3.credenzapassport.contracts.LedgerContract
 import com.credenza3.credenzapassport.contracts.NFTOwnership
 import com.credenza3.credenzapassport.contracts.OzzieContract
 import com.credenza3.credenzapassport.contracts.SellableMetadataMembershipContract
+import com.google.gson.Gson
 import com.google.mlkit.vision.codescanner.GmsBarcodeScanning
+import com.google.zxing.BarcodeFormat
+import com.google.zxing.EncodeHintType
+import com.google.zxing.qrcode.QRCodeWriter
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.runBlocking
 import okhttp3.OkHttpClient
 import okhttp3.Request
+import org.web3j.crypto.Credentials
+import org.web3j.crypto.Sign
 import org.web3j.protocol.Web3j
 import org.web3j.protocol.http.HttpService
 import java.io.IOException
 import java.math.BigInteger
+import java.text.SimpleDateFormat
+import java.util.Date
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
 import kotlin.coroutines.suspendCoroutine
@@ -42,6 +56,11 @@ private const val KEY_KRYPTKEY = "com.credenza3.credenzapassport.KRYPTKEY"
 private const val KEY_OAUTH_CLIENT_ID = "com.credenza3.credenzapassport.OAUTH_CLIENT_ID"
 private const val KEY_OAUTH_CLIENT_SECRET = "com.credenza3.credenzapassport.OAUTH_CLIENT_SECRET"
 const val KEY_OAUTH_REDIRECT_URL = "com.credenza3.credenzapassport.OAUTH_REDIRECT_URL"
+const val KEY_PASS_CODE_BASE_URL = "com.credenza3.credenzapassport.PASS_CODE_BASE_URL"
+
+private const val SCAN_TYPE_PASSPORT_ID = "PASSPORT_ID"
+private const val DATE_FORMATE = "yyyy-MM-dd'T'HH:mm:ss.SSS'Z'"
+
 private const val TAG = "PassportUtility"
 
 interface PassportListener {
@@ -64,10 +83,12 @@ object PassportUtility {
     private var connectedContractAddressC = ""
 
 
+    private var chainId: Long = 0
     internal lateinit var authClient: AuthClient
     private lateinit var web3j: Web3j
     private val okHttpClient = OkHttpClient()
     private lateinit var evmAPIService: EVMAPIService
+    private lateinit var discountsAPIService: DiscountsAPIService
     private lateinit var passportDataStore: PassportDataStore
     private lateinit var contractUtils: ContractUtils
 
@@ -80,6 +101,7 @@ object PassportUtility {
         chainId: Long,
         passportListener: PassportListener,
     ) {
+        this.chainId = chainId
 
         this.passportListener = passportListener
         passportDataStore = PassportDataStore(context.dataStore)
@@ -100,6 +122,11 @@ object PassportUtility {
         }
 
         evmAPIService = EVMApiProvider(authClient).evmAPIService
+
+        discountsAPIService = DiscountApiProvider(
+            authClient = authClient,
+            baseURL = context.getMetaDataOrThrowException(KEY_PASS_CODE_BASE_URL)
+        ).discountAPIService
     }
 
     private fun getAdminAccount(context: Context): String? = context.getMetaData(KEY_KRYPTKEY)
@@ -401,7 +428,10 @@ object PassportUtility {
     ): Boolean = suspendCoroutine { continuation ->
 
         val contract =
-            contractUtils.getContractAsUser(SellableMetadataMembershipContract::class.java, contractAddress)
+            contractUtils.getContractAsUser(
+                SellableMetadataMembershipContract::class.java,
+                contractAddress
+            )
 
         contract.confirmMembership(userAddress)
             .sendAsync()
@@ -436,7 +466,10 @@ object PassportUtility {
     ): String = suspendCoroutine { continuation ->
 
         val contract =
-            contractUtils.getContractAsUser(SellableMetadataMembershipContract::class.java, contractAddress)
+            contractUtils.getContractAsUser(
+                SellableMetadataMembershipContract::class.java,
+                contractAddress
+            )
 
         contract.getMembershipMetadata(userAddress)
             .sendAsync()
@@ -931,4 +964,78 @@ object PassportUtility {
             Log.d("ABC1209", "error", e)
         }
     }
+
+    /**
+     * Queries the ruleset for a given passport and ruleset ID.
+     *
+     * @param passportId: The ID of the passport
+     * @param ruleSetId: The ID of the ruleset
+     *
+     * @return A Data object containing information about the ruleset
+     */
+    suspend fun queryRuleset(passportId: String, ruleSetId: String): ValidateRulesetResponse? {
+        val rulesetData =
+            discountsAPIService.validateRuleset(ValidateRulesetRequest(passportId, ruleSetId))
+        return rulesetData.body()
+    }
+
+    /**
+     * Shows the QR code for the passport ID.
+     * This method checks if the user is logged in and then generates and displays the QR code.
+     */
+    fun showPassportIDQRCode(): Bitmap? {
+        if (authClient.getAccessToken() == null) {
+            return null
+        }
+
+        val timestamp = SimpleDateFormat(DATE_FORMATE).format(Date())
+        val sig = signTimestamp(timestamp)
+        val qrCodeData = QRCodeData(
+            scanType = SCAN_TYPE_PASSPORT_ID,
+            date = timestamp,
+            chainId = chainId.toString(),
+            sig = sig,
+        )
+
+        return generateQRCode(Gson().toJson(qrCodeData))
+    }
+
+    /**
+     * Signs the timestamp using OAuth code Web3.
+     *
+     * @return a string representing the signature
+     */
+    private fun signTimestamp(timestamp: String): String =
+        Sign.signPrefixedMessage(
+            timestamp.toByteArray(),
+            Credentials.create(passportDataStore.getAdminAccount()).ecKeyPair
+        ).toHexString()
+
+    /**
+     * Generates a QR code from a JSON string.
+     *
+     * @param qrCodeContent the JSON string to generate the QR code from
+     * @return a bitmap containing the QR code
+     */
+    private fun generateQRCode(qrCodeContent: String): Bitmap {
+        val size = 512 //pixels
+        val hints = hashMapOf<EncodeHintType, Int>().also {
+            it[EncodeHintType.MARGIN] = 1
+        } // Make the QR code buffer border narrower
+        val bits = QRCodeWriter().encode(qrCodeContent, BarcodeFormat.QR_CODE, size, size, hints)
+        return Bitmap.createBitmap(size, size, Bitmap.Config.RGB_565).also {
+            for (x in 0 until size) {
+                for (y in 0 until size) {
+                    it.setPixel(x, y, if (bits[x, y]) Color.BLACK else Color.WHITE)
+                }
+            }
+        }
+    }
 }
+
+data class QRCodeData(
+    val scanType: String,
+    val date: String,
+    val chainId: String,
+    val sig: String,
+)

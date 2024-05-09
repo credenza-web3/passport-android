@@ -7,8 +7,8 @@ import android.util.Base64
 import android.util.Range
 import androidx.browser.customtabs.CustomTabsIntent
 import com.credenza3.credenzapassport.PassportDataStore
-import com.credenza3.credenzapassport.auth.api.AuthApiProvider
-import com.credenza3.credenzapassport.auth.api.BASE_ACCOUNTS_URL
+import com.credenza3.credenzapassport.api.AuthApiProvider
+import com.credenza3.credenzapassport.api.BASE_ACCOUNTS_URL
 import com.credenza3.credenzapassport.base64URLEncode
 import com.credenza3.credenzapassport.hashSha256
 import java.security.SecureRandom
