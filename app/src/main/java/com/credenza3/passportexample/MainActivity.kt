@@ -78,6 +78,7 @@ fun MainContent(
 
     var userAddress: String? by remember { mutableStateOf(null) }
     var qrCode: Bitmap? by remember { mutableStateOf(null) }
+    var isNFCReaderEnabled by remember { mutableStateOf(false) }
 
     PassportUtility.init(
         context = context.applicationContext,
@@ -90,6 +91,7 @@ fun MainContent(
             }
 
             override fun onNFCScanComplete(address: String) {
+                isNFCReaderEnabled = false
                 showShortToast(context, "NFC scan success for $address")
             }
         })
@@ -348,16 +350,26 @@ fun MainContent(
 
         SectionDivider()
 
-        Button(onClick = {
-            try {
-                PassportUtility.readNFC(context as Activity)
-            } catch (t: Throwable) {
-                Log.e("MainActivity", "Failed to read NFC", t)
-                firebaseCrashlytics.recordException(t)
-                showShortToast(context, "Error: ${t.message ?: "Unknown"}")
+        Row(verticalAlignment = CenterVertically) {
+
+            Button(onClick = {
+                try {
+                    PassportUtility.readNFC(context as Activity)
+                    isNFCReaderEnabled = true
+                } catch (t: Throwable) {
+                    isNFCReaderEnabled = false
+
+                    Log.e("MainActivity", "Failed to read NFC", t)
+                    firebaseCrashlytics.recordException(t)
+                    showShortToast(context, "Error: ${t.message ?: "Unknown"}")
+                }
+            }) {
+                Text(text = "readNFC")
             }
-        }) {
-            Text(text = "readNFC")
+
+            if (isNFCReaderEnabled) {
+                Text(text = "Waiting for NFC tag...", modifier = Modifier.padding(start = 8.dp))
+            }
         }
 
         AsyncButton(
