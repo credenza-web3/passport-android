@@ -393,6 +393,8 @@ fun AsyncButton(
     val coroutineScope = rememberCoroutineScope()
 
     val exceptionHandler = CoroutineExceptionHandler { _, e ->
+        firebaseCrashlytics.recordException(e)
+
         Log.e(TAG, "Error: ${e.message}", e)
         isInProgress = false
         showShortToast(context, "Error: ${e.message ?: "Unknown"}")
