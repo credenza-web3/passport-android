@@ -30,6 +30,8 @@ import com.credenza3.credenzapassport.contracts.LedgerContract
 import com.credenza3.credenzapassport.contracts.NFTOwnership
 import com.credenza3.credenzapassport.contracts.OzzieContract
 import com.credenza3.credenzapassport.contracts.SellableMetadataMembershipContract
+import com.google.android.gms.common.moduleinstall.ModuleInstall
+import com.google.android.gms.common.moduleinstall.ModuleInstallRequest
 import com.google.gson.Gson
 import com.google.mlkit.vision.codescanner.GmsBarcodeScanning
 import com.google.zxing.BarcodeFormat
@@ -132,17 +134,35 @@ object PassportUtility {
     private fun getAdminAccount(context: Context): String? = context.getMetaData(KEY_KRYPTKEY)
 
     suspend fun scanQRCode(context: Context): String? = suspendCoroutine { continuation ->
-        GmsBarcodeScanning.getClient(context)
-            .startScan()
-            .addOnSuccessListener { barcode ->
-                continuation.resume(barcode.url?.url)
-            }
-            .addOnCanceledListener {
-                continuation.resume(null)
+        val moduleInstall = ModuleInstall.getClient(context.applicationContext)
+        val moduleInstallRequest = ModuleInstallRequest.newBuilder()
+            .addApi(GmsBarcodeScanning.getClient(context.applicationContext))
+            .build()
+        moduleInstall
+            .installModules(moduleInstallRequest)
+            .addOnSuccessListener {
+                if (it.areModulesAlreadyInstalled()) {
+
+                    GmsBarcodeScanning.getClient(context)
+                        .startScan()
+                        .addOnSuccessListener { barcode ->
+                            continuation.resume(barcode.url?.url)
+                        }
+                        .addOnCanceledListener {
+                            continuation.resume(null)
+                        }
+                        .addOnFailureListener { e ->
+                            Log.e(TAG, "Failed to scan QR code", e)
+                            continuation.resumeWithException(e)
+                        }
+                } else {
+                    continuation.resumeWithException(IllegalStateException("GmsBarcodeScanning model is not installed"))
+                }
             }
             .addOnFailureListener { e ->
                 Log.e(TAG, "Failed to scan QR code", e)
                 continuation.resumeWithException(e)
+
             }
     }
 
