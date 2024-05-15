@@ -21,6 +21,7 @@ import com.credenza3.credenzapassport.api.DiscountApiProvider
 import com.credenza3.credenzapassport.api.DiscountsAPIService
 import com.credenza3.credenzapassport.api.EVMAPIService
 import com.credenza3.credenzapassport.api.EVMApiProvider
+import com.credenza3.credenzapassport.api.model.RequestTokenRequest
 import com.credenza3.credenzapassport.api.model.ValidateRulesetRequest
 import com.credenza3.credenzapassport.api.model.ValidateRulesetResponse
 import com.credenza3.credenzapassport.auth.AuthClient
@@ -30,6 +31,12 @@ import com.credenza3.credenzapassport.contracts.LedgerContract
 import com.credenza3.credenzapassport.contracts.NFTOwnership
 import com.credenza3.credenzapassport.contracts.OzzieContract
 import com.credenza3.credenzapassport.contracts.SellableMetadataMembershipContract
+import com.credenza3.credenzapassport.model.AirDropParams
+import com.credenza3.credenzapassport.model.DeviceScanType
+import com.credenza3.credenzapassport.model.LoyaltyPointsRequestParams
+import com.credenza3.credenzapassport.model.PassScanProtocolParams
+import com.credenza3.credenzapassport.model.QRCodeData
+import com.credenza3.credenzapassport.model.toPassScanProtocolParams
 import com.google.android.gms.common.moduleinstall.ModuleInstall
 import com.google.android.gms.common.moduleinstall.ModuleInstallRequest
 import com.google.gson.Gson
@@ -37,7 +44,9 @@ import com.google.mlkit.vision.codescanner.GmsBarcodeScanning
 import com.google.zxing.BarcodeFormat
 import com.google.zxing.EncodeHintType
 import com.google.zxing.qrcode.QRCodeWriter
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -67,7 +76,12 @@ private const val TAG = "PassportUtility"
 
 interface PassportListener {
     fun onLoginComplete(address: String)
+    fun onLoginFailed(error: String)
     fun onNFCScanComplete(address: String)
+    fun onQRScannerSuccess(address: String)
+    fun onQRScannerFailed(e: Throwable)
+    fun onQRScannerCancel()
+    fun onPassScanComplete(response: String)
 }
 
 object PassportUtility {
@@ -97,6 +111,9 @@ object PassportUtility {
     private var nfcAdapter: NfcAdapter? = null
 
     lateinit var passportListener: PassportListener
+
+    private var deviceScanType: DeviceScanType = DeviceScanType.NFC
+    private var shouldMakeStringCheck: Boolean = false
 
     fun init(
         context: Context,
@@ -133,7 +150,16 @@ object PassportUtility {
 
     private fun getAdminAccount(context: Context): String? = context.getMetaData(KEY_KRYPTKEY)
 
-    suspend fun scanQRCode(context: Context): String? = suspendCoroutine { continuation ->
+    fun activatePassScan(context: Context) {
+        shouldMakeStringCheck = true
+        startQRScan(context)
+    }
+
+    fun scanQR(context: Context) {
+        startQRScan(context)
+    }
+
+    private fun startQRScan(context: Context) {
         val moduleInstall = ModuleInstall.getClient(context.applicationContext)
         val moduleInstallRequest = ModuleInstallRequest.newBuilder()
             .addApi(GmsBarcodeScanning.getClient(context.applicationContext))
@@ -146,23 +172,33 @@ object PassportUtility {
                     GmsBarcodeScanning.getClient(context)
                         .startScan()
                         .addOnSuccessListener { barcode ->
-                            continuation.resume(barcode.url?.url)
+
+                            deviceScanType = DeviceScanType.QR
+
+                            barcode.url?.url?.let { scanResult ->
+                                if (shouldMakeStringCheck) {
+                                    CoroutineScope(Dispatchers.IO).launch {
+                                        passScanProtocolRouter(scanResult.toPassScanProtocolParams())
+                                    }
+                                } else {
+                                    passportListener.onQRScannerSuccess(scanResult)
+                                }
+                            }
                         }
                         .addOnCanceledListener {
-                            continuation.resume(null)
+                            passportListener.onQRScannerCancel()
                         }
                         .addOnFailureListener { e ->
                             Log.e(TAG, "Failed to scan QR code", e)
-                            continuation.resumeWithException(e)
+                            passportListener.onQRScannerFailed(e)
                         }
                 } else {
-                    continuation.resumeWithException(IllegalStateException("GmsBarcodeScanning model is not installed"))
+                    passportListener.onQRScannerFailed(IllegalStateException("GmsBarcodeScanning model is not installed"))
                 }
             }
             .addOnFailureListener { e ->
                 Log.e(TAG, "Failed to scan QR code", e)
-                continuation.resumeWithException(e)
-
+                passportListener.onQRScannerFailed(e)
             }
     }
 
@@ -238,6 +274,7 @@ object PassportUtility {
 
         } ?: run {
             Log.e(TAG, "No Account Found")
+            passportListener.onLoginFailed("No Account Found")
         }
     }
 
@@ -753,7 +790,7 @@ object PassportUtility {
      * @param serialNumber: The serial number of the connected packaging.
      * @return The Ethereum address of the connected packaging.
      */
-    suspend fun connectedPackageQuery(
+    suspend fun connectedPackageQueryPass(
         serialNumber: String,
     ): String = suspendCoroutine { continuation ->
 
@@ -885,8 +922,13 @@ object PassportUtility {
             }
             return@runBlocking ""
         }
-        passportListener.onNFCScanComplete(serialID)
+
+        deviceScanType = DeviceScanType.NFC
         nfcAdapter?.disableReaderMode(activity)
+
+        CoroutineScope(Dispatchers.IO).launch {
+            scanCompleted(serialID)
+        }
     }
 
     fun getTagInfos(tag: Tag): Map<String, String> {
@@ -943,6 +985,60 @@ object PassportUtility {
         }
 
         return infos
+    }
+
+    private suspend fun scanCompleted(serialID: String) {
+        val result = connectedPackageQueryPass(serialID)
+        passScanProtocolRouter(result.toPassScanProtocolParams())
+    }
+
+    /**
+     * Processes the JSON string and performs actions based on the specified scan type.
+     * @param passScanProtocolParams: params to be processed
+     */
+    private suspend fun passScanProtocolRouter(passScanProtocolParams: PassScanProtocolParams) =
+        when (passScanProtocolParams) {
+            is AirDropParams -> handleAirDrop(passScanProtocolParams)
+            is LoyaltyPointsRequestParams -> handleRequestLoyaltyPoints(passScanProtocolParams)
+        }
+
+    /**
+     * Handles the AirDrop functionality based on the provided JSON parameters.
+     *
+     * @param airDropParams: Parameters for the AirDrop
+     */
+    private suspend fun handleAirDrop(airDropParams: AirDropParams) {
+        val response = discountsAPIService.requestToken(
+            airDropParams.chainId, airDropParams.contractAddress, RequestTokenRequest(
+                targetAddress = passportDataStore.getUserAccount()
+                    ?: throw IllegalStateException("User is not authorized"),
+                tokenId = airDropParams.tokenId,
+                amount = airDropParams.amount
+            )
+        ).body() ?: throw Exception("Failed to request token")
+
+        when (deviceScanType) {
+            DeviceScanType.NFC -> passportListener.onNFCScanComplete(response.tx) //TODO pass the whole answer?
+            DeviceScanType.QR -> passportListener.onPassScanComplete(response.tx)
+        }
+    }
+
+    /**
+     * Handles the request for loyalty points based on the provided JSON parameters.
+     *
+     * @param loyaltyPointsRequestParams: Parameters for the loyalty points request
+     */
+    private suspend fun handleRequestLoyaltyPoints(loyaltyPointsRequestParams: LoyaltyPointsRequestParams) {
+        val response = discountsAPIService.requestLoyaltyPoints(
+            chainId = loyaltyPointsRequestParams.chainId,
+            eventId = loyaltyPointsRequestParams.eventId,
+            contractAddress = loyaltyPointsRequestParams.contractAddress,
+        ).body() ?: throw Exception("Failed to request loyalty points")
+
+        when (deviceScanType) {
+            DeviceScanType.NFC -> passportListener.onNFCScanComplete("") //TODO pass the whole answer?
+            DeviceScanType.QR -> passportListener.onPassScanComplete("")
+        }
     }
 
     /**
@@ -1052,10 +1148,3 @@ object PassportUtility {
         }
     }
 }
-
-data class QRCodeData(
-    val scanType: String,
-    val date: String,
-    val chainId: String,
-    val sig: String,
-)

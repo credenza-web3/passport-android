@@ -90,9 +90,30 @@ fun MainContent(
                 userAddress = address
             }
 
+            override fun onLoginFailed(error: String) {
+                showShortToast(context, "Login error: $error")
+            }
+
             override fun onNFCScanComplete(address: String) {
                 isNFCReaderEnabled = false
                 showShortToast(context, "NFC scan success for $address")
+            }
+
+            override fun onQRScannerSuccess(address: String) {
+                showShortToast(context, "QR scan success for $address")
+            }
+
+            override fun onQRScannerFailed(e: Throwable) {
+                firebaseCrashlytics.recordException(e)
+                showShortToast(context, "QR scan failed: ${e.message}")
+            }
+
+            override fun onQRScannerCancel() {
+                showShortToast(context, "QR scan was cancelled")
+            }
+
+            override fun onPassScanComplete(response: String) {
+                showShortToast(context, "Pass scan success for $response")
             }
         })
 
@@ -373,9 +394,18 @@ fun MainContent(
         }
 
         AsyncButton(
-            title = "scanQRCode",
+            title = "activatePassScan",
             doAction = {
-                PassportUtility.scanQRCode(context) ?: ""
+                PassportUtility.activatePassScan(context)
+                "scanning..."
+            }
+        )
+
+        AsyncButton(
+            title = "scanQR",
+            doAction = {
+                PassportUtility.scanQR(context)
+                "scanning..."
             }
         )
     }
