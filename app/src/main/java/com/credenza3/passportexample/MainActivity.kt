@@ -86,34 +86,39 @@ fun MainContent(
         passportListener = object : PassportListener {
 
             override fun onLoginComplete(address: String) {
-                showShortToast(context, "Login success for $address")
+                showToast(context, "Login success for $address")
                 userAddress = address
             }
 
             override fun onLoginFailed(error: String) {
-                showShortToast(context, "Login error: $error")
+                showToast(context, "Login error: $error")
             }
 
             override fun onNFCScanComplete(address: String) {
                 isNFCReaderEnabled = false
-                showShortToast(context, "NFC scan success for $address")
+                showToast(context, "NFC scan success for $address")
             }
 
             override fun onQRScannerSuccess(address: String) {
-                showShortToast(context, "QR scan success for $address")
+                showToast(context, "QR scan success for $address")
             }
 
             override fun onQRScannerFailed(e: Throwable) {
                 firebaseCrashlytics.recordException(e)
-                showShortToast(context, "QR scan failed: ${e.message}")
+                showToast(context, "QR scan failed: ${e.message}")
             }
 
             override fun onQRScannerCancel() {
-                showShortToast(context, "QR scan was cancelled")
+                showToast(context, "QR scan was cancelled")
             }
 
             override fun onPassScanComplete(response: String) {
-                showShortToast(context, "Pass scan success for $response")
+                showToast(context, "Pass scan success for $response")
+            }
+
+            override fun onPassScanFailed(e: Throwable) {
+                firebaseCrashlytics.recordException(e)
+                showToast(context, "Pass scan failed: ${e.message}")
             }
         })
 
@@ -367,47 +372,51 @@ fun MainContent(
             qrCode?.let {
                 Image(bitmap = it.asImageBitmap(), contentDescription = null)
             }
-        }
 
-        SectionDivider()
+            SectionDivider()
 
-        Row(verticalAlignment = CenterVertically) {
+            Row(verticalAlignment = CenterVertically) {
 
-            Button(onClick = {
-                try {
-                    PassportUtility.readNFC(context as Activity)
-                    isNFCReaderEnabled = true
-                } catch (t: Throwable) {
-                    isNFCReaderEnabled = false
+                Button(onClick = {
 
-                    Log.e("MainActivity", "Failed to read NFC", t)
-                    firebaseCrashlytics.recordException(t)
-                    showShortToast(context, "Error: ${t.message ?: "Unknown"}")
+                    coroutineScope.launch {
+                        try {
+                            isNFCReaderEnabled = true
+                            PassportUtility.readNFC(context as Activity)
+                            isNFCReaderEnabled = false
+                        } catch (t: Throwable) {
+                            isNFCReaderEnabled = false
+
+                            Log.e("MainActivity", "Failed to read NFC", t)
+                            firebaseCrashlytics.recordException(t)
+                            showToast(context, "Error: ${t.message ?: "Unknown"}")
+                        }
+                    }
+                }) {
+                    Text(text = "readNFC")
                 }
-            }) {
-                Text(text = "readNFC")
+
+                if (isNFCReaderEnabled) {
+                    Text(text = "Waiting for NFC tag...", modifier = Modifier.padding(start = 8.dp))
+                }
             }
 
-            if (isNFCReaderEnabled) {
-                Text(text = "Waiting for NFC tag...", modifier = Modifier.padding(start = 8.dp))
-            }
+            AsyncButton(
+                title = "activatePassScan",
+                doAction = {
+                    PassportUtility.activatePassScan(context)
+                    "scanning..."
+                }
+            )
+
+            AsyncButton(
+                title = "scanQR",
+                doAction = {
+                    PassportUtility.scanQR(context)
+                    "scanning..."
+                }
+            )
         }
-
-        AsyncButton(
-            title = "activatePassScan",
-            doAction = {
-                PassportUtility.activatePassScan(context)
-                "scanning..."
-            }
-        )
-
-        AsyncButton(
-            title = "scanQR",
-            doAction = {
-                PassportUtility.scanQR(context)
-                "scanning..."
-            }
-        )
     }
 }
 
@@ -427,7 +436,7 @@ fun AsyncButton(
 
         Log.e(TAG, "Error: ${e.message}", e)
         isInProgress = false
-        showShortToast(context, "Error: ${e.message ?: "Unknown"}")
+        showToast(context, "Error: ${e.message ?: "Unknown"}")
     }
 
 
@@ -441,7 +450,7 @@ fun AsyncButton(
                 coroutineScope.launch(exceptionHandler + SupervisorJob()) {
                     val result = doAction()
                     isInProgress = false
-                    showShortToast(context, "$title: $result")
+                    showToast(context, "$title: $result")
                 }
             }
         ) {
@@ -458,9 +467,9 @@ fun AsyncButton(
     }
 }
 
-private fun showShortToast(context: Context, message: String) {
+private fun showToast(context: Context, message: String) {
     (context as MainActivity).lifecycleScope.launch(Dispatchers.Main) {
-        Toast.makeText(context, message, Toast.LENGTH_SHORT).show()
+        Toast.makeText(context, message, Toast.LENGTH_LONG).show()
     }
 }
 

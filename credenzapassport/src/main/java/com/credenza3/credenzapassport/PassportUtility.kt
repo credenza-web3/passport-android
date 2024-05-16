@@ -54,6 +54,7 @@ import org.web3j.crypto.Credentials
 import org.web3j.crypto.Sign
 import org.web3j.protocol.Web3j
 import org.web3j.protocol.http.HttpService
+import retrofit2.HttpException
 import java.io.IOException
 import java.math.BigInteger
 import java.text.SimpleDateFormat
@@ -82,6 +83,7 @@ interface PassportListener {
     fun onQRScannerFailed(e: Throwable)
     fun onQRScannerCancel()
     fun onPassScanComplete(response: String)
+    fun onPassScanFailed(e: Throwable)
 }
 
 object PassportUtility {
@@ -131,7 +133,7 @@ object PassportUtility {
 
         authClient = AuthClient(
             clientId = context.getMetaDataOrThrowException(KEY_OAUTH_CLIENT_ID),
-            clientSecret = context.getMetaDataOrThrowException(KEY_OAUTH_CLIENT_ID),
+            clientSecret = context.getMetaDataOrThrowException(KEY_OAUTH_CLIENT_SECRET),
             redirectURL = context.getMetaDataOrThrowException(KEY_OAUTH_REDIRECT_URL),
             passportDataStore = passportDataStore,
         )
@@ -175,7 +177,7 @@ object PassportUtility {
 
                             deviceScanType = DeviceScanType.QR
 
-                            barcode.url?.url?.let { scanResult ->
+                            barcode.displayValue?.let { scanResult ->
                                 if (shouldMakeStringCheck) {
                                     CoroutineScope(Dispatchers.IO).launch {
                                         passScanProtocolRouter(scanResult.toPassScanProtocolParams())
@@ -183,6 +185,8 @@ object PassportUtility {
                                 } else {
                                     passportListener.onQRScannerSuccess(scanResult)
                                 }
+                            } ?: run {
+                                passportListener.onQRScannerFailed(IllegalStateException("Empty QR code"))
                             }
                         }
                         .addOnCanceledListener {
@@ -898,19 +902,28 @@ object PassportUtility {
     /**
      * Initiates a new NFC adapter session for reading from the passport-enabled tag.
      */
-    fun readNFC(activity: Activity) {
+    suspend fun readNFC(activity: Activity): Unit = suspendCoroutine { continuation ->
         nfcAdapter = NfcAdapter.getDefaultAdapter(activity)
             ?: throw UnsupportedOperationException("Nfc is not supported for current device")
 
         nfcAdapter?.enableReaderMode(
             activity,
-            { onTagDiscovered(activity, it) },
+            {
+                CoroutineScope(continuation.context).launch {
+                    try {
+                        onTagDiscovered(activity, it)
+                        continuation.resume(Unit)
+                    } catch (t:Throwable) {
+                        continuation.resumeWithException(t)
+                    }
+                }
+            },
             FLAG_READER_NFC_A,
             Bundle()
         )
     }
 
-    private fun onTagDiscovered(activity: Activity, tag: Tag) {
+    private suspend fun onTagDiscovered(activity: Activity, tag: Tag) {
         val serialID: String = runBlocking(Dispatchers.IO) {
             val tagInfos = getTagInfos(tag)
             var tagInfosDetail = ""
@@ -926,9 +939,7 @@ object PassportUtility {
         deviceScanType = DeviceScanType.NFC
         nfcAdapter?.disableReaderMode(activity)
 
-        CoroutineScope(Dispatchers.IO).launch {
-            scanCompleted(serialID)
-        }
+        scanCompleted(serialID)
     }
 
     fun getTagInfos(tag: Tag): Map<String, String> {
@@ -996,11 +1007,17 @@ object PassportUtility {
      * Processes the JSON string and performs actions based on the specified scan type.
      * @param passScanProtocolParams: params to be processed
      */
-    private suspend fun passScanProtocolRouter(passScanProtocolParams: PassScanProtocolParams) =
-        when (passScanProtocolParams) {
-            is AirDropParams -> handleAirDrop(passScanProtocolParams)
-            is LoyaltyPointsRequestParams -> handleRequestLoyaltyPoints(passScanProtocolParams)
+    private suspend fun passScanProtocolRouter(passScanProtocolParams: PassScanProtocolParams) {
+        try {
+            when (passScanProtocolParams) {
+                is AirDropParams -> handleAirDrop(passScanProtocolParams)
+                is LoyaltyPointsRequestParams -> handleRequestLoyaltyPoints(passScanProtocolParams)
+            }
+            shouldMakeStringCheck = false
+        } catch (t: Throwable) {
+            passportListener.onPassScanFailed(t)
         }
+    }
 
     /**
      * Handles the AirDrop functionality based on the provided JSON parameters.
@@ -1008,18 +1025,25 @@ object PassportUtility {
      * @param airDropParams: Parameters for the AirDrop
      */
     private suspend fun handleAirDrop(airDropParams: AirDropParams) {
-        val response = discountsAPIService.requestToken(
-            airDropParams.chainId, airDropParams.contractAddress, RequestTokenRequest(
-                targetAddress = passportDataStore.getUserAccount()
-                    ?: throw IllegalStateException("User is not authorized"),
-                tokenId = airDropParams.tokenId,
-                amount = airDropParams.amount
+        try {
+            val response = discountsAPIService.requestToken(
+                airDropParams.chainId, airDropParams.contractAddress, RequestTokenRequest(
+                    targetAddress = passportDataStore.getUserAccount()
+                        ?: throw IllegalStateException("User is not authorized"),
+                    tokenId = airDropParams.tokenId,
+                    amount = airDropParams.amount
+                )
             )
-        ).body() ?: throw Exception("Failed to request token")
 
-        when (deviceScanType) {
-            DeviceScanType.NFC -> passportListener.onNFCScanComplete(response.tx) //TODO pass the whole answer?
-            DeviceScanType.QR -> passportListener.onPassScanComplete(response.tx)
+            when (deviceScanType) {
+                DeviceScanType.NFC -> passportListener.onNFCScanComplete(response.string())
+                DeviceScanType.QR -> passportListener.onPassScanComplete(response.string())
+            }
+        } catch (t: Throwable) {
+            val errorMessage =
+                (t as? HttpException)?.response()?.errorBody()?.string()
+                    ?: "Failed to request token"
+            throw Exception(errorMessage, t)
         }
     }
 
@@ -1029,15 +1053,22 @@ object PassportUtility {
      * @param loyaltyPointsRequestParams: Parameters for the loyalty points request
      */
     private suspend fun handleRequestLoyaltyPoints(loyaltyPointsRequestParams: LoyaltyPointsRequestParams) {
-        val response = discountsAPIService.requestLoyaltyPoints(
-            chainId = loyaltyPointsRequestParams.chainId,
-            eventId = loyaltyPointsRequestParams.eventId,
-            contractAddress = loyaltyPointsRequestParams.contractAddress,
-        ).body() ?: throw Exception("Failed to request loyalty points")
+        try {
+            val response = discountsAPIService.requestLoyaltyPoints(
+                chainId = loyaltyPointsRequestParams.chainId,
+                eventId = loyaltyPointsRequestParams.eventId,
+                contractAddress = loyaltyPointsRequestParams.contractAddress,
+            )
 
-        when (deviceScanType) {
-            DeviceScanType.NFC -> passportListener.onNFCScanComplete("") //TODO pass the whole answer?
-            DeviceScanType.QR -> passportListener.onPassScanComplete("")
+            when (deviceScanType) {
+                DeviceScanType.NFC -> passportListener.onNFCScanComplete(response.string())
+                DeviceScanType.QR -> passportListener.onPassScanComplete(response.string())
+            }
+        } catch (t: Throwable) {
+            val errorMessage =
+                (t as? HttpException)?.response()?.errorBody()?.string()
+                    ?: "Failed to request loyalty points"
+            throw Exception(errorMessage, t)
         }
     }
 

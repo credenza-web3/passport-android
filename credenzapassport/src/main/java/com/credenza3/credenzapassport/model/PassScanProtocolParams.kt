@@ -2,12 +2,15 @@ package com.credenza3.credenzapassport.model
 
 import com.google.gson.Gson
 
-sealed class PassScanProtocolParams(
+open class PassScanProtocolParams(
     open val scanType: String,
 )
 
 data class AirDropParams(
+
+    @Transient
     override val scanType: String,
+
     val contractAddress: String,
     val tokenId: Int,
     val amount: Int,
@@ -15,7 +18,10 @@ data class AirDropParams(
 ) : PassScanProtocolParams(scanType)
 
 data class LoyaltyPointsRequestParams(
+
+    @Transient
     override val scanType: String,
+
     val contractAddress: String,
     val eventId: String,
     val chainId: String,
